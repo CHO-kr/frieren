@@ -1,0 +1,6 @@
+# Written by Herdr itself on every start / check, not part of the layout
+gpui-kit.d.ts
+herdr.d.ts
+jsconfig.json
+*.error
+__pycache__/
