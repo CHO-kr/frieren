@@ -1,8 +1,4 @@
 {
-  "layout:frieren": {
-    "ctrl-shift-s": "mod.open:session-search",
-    "ctrl-shift-r": "layout.toggle:results"
-  },
   "layout:frieren-journey": {
     "ctrl-shift-s": "mod.open:session-search",
     "ctrl-shift-r": "layout.toggle:results"

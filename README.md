@@ -1,25 +1,34 @@
-# Frieren — Herdr layouts
+# Frieren Journey — a Herdr layout
 
-Two Windows layouts for the [Herdr](https://herdr.dev) desktop app, made for running several
-**Claude Code** and **Codex** accounts side by side. Every saved Claude and Codex session is one click
-away, every account's plan usage sits in the top bar, and every pane says which account and model it
-runs on. A Frieren wallpaper fills the whole window and shows through translucent terminals and sidebars.
+A Windows layout for the [Herdr](https://herdr.dev) desktop app, made for running several
+**Claude Code** and **Codex** accounts side by side, dressed as a fantasy party from *Frieren*. Each
+agent is a party member card with HP/MP bars, each space is a place on the journey, and each tab
+carries its member's face. Every saved Claude and Codex session is one click away, every account's plan
+usage sits in the top bar, and every pane says which account and model it runs on. A Frieren wallpaper
+fills the whole window and shows through translucent terminals and sidebars.
 
-- **Frieren Journey** (`frieren-journey`): the same tools dressed as a fantasy party, in the style of
-  [herdr-traveler](https://github.com/franky5440-afk/herdr-traveler). Each agent is a party member card
-  with HP/MP bars, each space is a place on the journey, and each tab carries its member's face.
-- **Frieren** (`frieren`): the plain glass look.
+Layout name: `frieren-journey`.
 
-![Frieren Journey layout in Herdr](preview-journey.png)
-
-![Frieren layout in Herdr](preview.png)
+![Frieren Journey layout in Herdr](preview.png)
 
 > Windows 10/11 only. The UI text is English.
 
 ## Features
 
-Both layouts:
-
+- **Party cards**: one card per agent, drawn as a member of Frieren's world (16 characters: Frieren,
+  Fern, Stark, Himmel, Heiter, Eisen, Sein, Ubel, Land, Denken, Methode, Flamme, Serie, Kanne, Lawine,
+  Wirbel). A card shows the portrait, the tab name and status, the resumed session's title (or
+  "Fern · Mage"), a `Claude` / `Codex` tag with the account and model, and two bars:
+  **HP** = what's left of the short limit (5 hours), **MP** = what's left of the weekly limit (or the
+  longest one the plan has).
+- **Status effects** on the portrait: working = a turning magic circle with sparkles, needs help = a
+  flashing `!`, resting = `z z z`, done = a flower.
+- **Places for spaces**: each space gets one of eight places (Royal Capital, Old Ruins, Flower Hill,
+  Forest Camp, Rampart Watchtower, Town Street, Starlit Old Tree, Moonlit Ruined Castle) as a framed
+  painting, plus a git summary across its terminals (uncommitted files, unpushed commits, repos without
+  a remote).
+- **Faces on tabs**: each tab shows its party member's face, framed in that character's color.
+- **Journey · Day N** in the top-left corner, counted from the day you first open the layout.
 - **Session lists for Claude and Codex**: every saved session in the sidebar, grouped by date
   (Today, Yesterday, Last 7 days, …), with live status marks (working, needs you, done, idle).
   Click to resume in its folder. If a terminal already runs it, that terminal gets focus.
@@ -37,27 +46,9 @@ Both layouts:
   folder, with image and video thumbnails, a preview window, and an "Attach to agent" button.
 - **Smart paste** (`Ctrl+V`): pastes text and copied files. A screenshot on the clipboard is saved as a
   PNG and attached, so Claude Code and Codex pick it up.
-- **Glass look**: terminals are 40% opaque, so the wallpaper shows through clearly, and sidebars, menus and dialogs are
-  translucent too.
-
-Frieren Journey adds:
-
-- **Party cards**: one card per agent, drawn as a member of Frieren's world (16 characters: Frieren,
-  Fern, Stark, Himmel, Heiter, Eisen, Sein, Ubel, Land, Denken, Methode, Flamme, Serie, Kanne, Lawine,
-  Wirbel). A card shows the portrait, the tab name and status, the resumed session's title (or
-  "Fern · Mage"), a `Claude` / `Codex` tag with the account and model, and two bars:
-  **HP** = what's left of the short limit (5 hours), **MP** = what's left of the weekly limit (or the
-  longest one the plan has).
-- **Status effects** on the portrait: working = a turning magic circle with sparkles, needs help = a
-  flashing `!`, resting = `z z z`, done = a flower.
-- **Places for spaces**: each space gets one of eight places (Royal Capital, Old Ruins, Flower Hill,
-  Forest Camp, Rampart Watchtower, Town Street, Starlit Old Tree, Moonlit Ruined Castle) as a framed
-  painting, plus a git summary across its terminals (uncommitted files, unpushed commits, repos without
-  a remote).
-- **Faces on tabs**: each tab shows its party member's face, framed in that character's color.
-- **Journey · Day N** in the top-left corner, counted from the day you first open the layout.
-- Navy and gold theme (`frieren-journey`), square gold frames. Fold the sidebar (`Ctrl+Shift+B`) and the
-  party shrinks to a column of faces.
+- **Look**: navy and gold theme (`frieren-journey`) with square gold frames. Terminals are 40% opaque,
+  so the wallpaper shows through clearly, and sidebars, menus and dialogs are translucent too. Fold the
+  sidebar (`Ctrl+Shift+B`) and the party shrinks to a column of faces.
 
 ## Requirements
 
@@ -68,7 +59,7 @@ Frieren Journey adds:
 | Python 3.10+ on PATH, with [Pillow](https://pypi.org/project/pillow/) | usage, session lists, thumbnails, clipboard images |
 | Claude Code at `~/.local/bin/claude.exe` and the Claude desktop app | the Claude session list |
 | Codex desktop app (`%LOCALAPPDATA%\OpenAI\Codex\bin\…\codex.exe`) | the Codex session list and gauges |
-| `git` on PATH (Journey) | the git summary under each space |
+| `git` on PATH | the git summary under each space |
 | `ffmpeg` (optional) | video thumbnails in the results panel |
 
 ```powershell
@@ -82,7 +73,7 @@ python -m pip install pillow
 In a Herdr terminal, ask Claude Code or Codex:
 
 ```
-Add the Herdr layouts from https://github.com/CHO-kr/frieren
+Add the Herdr layout from https://github.com/CHO-kr/frieren
 ```
 
 Herdr's own instructions (`~/.config/herdr-app/AGENTS.md`) tell the agent how to read the recipe,
@@ -95,7 +86,7 @@ git clone https://github.com/CHO-kr/frieren "$env:TEMP\frieren"
 $src = "$env:TEMP\frieren"; $h = "$HOME\.config\herdr-app"
 
 # Stop if a name is already taken (rename the new one first)
-$taken = @(Get-ChildItem "$src\mods" -Directory | Where-Object { Test-Path "$h\mods\$($_.Name)" } | ForEach-Object { "mods\$($_.Name)" }) + @('layouts\frieren.json','layouts\frieren-journey.json','themes\frieren-ink.json','themes\frieren-paper.json','themes\frieren-journey.json','backgrounds\frieren.jpg' | Where-Object { Test-Path "$h\$_" })
+$taken = @(Get-ChildItem "$src\mods" -Directory | Where-Object { Test-Path "$h\mods\$($_.Name)" } | ForEach-Object { "mods\$($_.Name)" }) + @('layouts\frieren-journey.json','themes\frieren-journey.json','backgrounds\frieren.jpg' | Where-Object { Test-Path "$h\$_" })
 if ($taken) { "Already there, rename before copying: $($taken -join ', ')" } else {
   foreach ($d in 'layouts','themes','backgrounds','mods') { New-Item -ItemType Directory -Force "$h\$d" | Out-Null }
   foreach ($m in Get-ChildItem "$src\mods" -Directory) {
@@ -104,7 +95,7 @@ if ($taken) { "Already there, rename before copying: $($taken -join ', ')" } els
     Copy-Item "$($m.FullName)\mod.json" "$h\mods\$($m.Name)"
     Copy-Item "$($m.FullName)\*" "$h\mods\$($m.Name)" -Exclude mod.json -Recurse
   }
-  Copy-Item "$src\layouts\frieren*" "$h\layouts"
+  Copy-Item "$src\layouts\frieren-journey*" "$h\layouts"
   Copy-Item "$src\themes\*" "$h\themes"
   Copy-Item "$src\backgrounds\*" "$h\backgrounds"
 }
@@ -115,10 +106,6 @@ that you don't already use these keys:
 
 ```json
 {
-  "layout:frieren": {
-    "ctrl-shift-s": "mod.open:session-search",
-    "ctrl-shift-r": "layout.toggle:results"
-  },
   "layout:frieren-journey": {
     "ctrl-shift-s": "mod.open:session-search",
     "ctrl-shift-r": "layout.toggle:results"
@@ -129,21 +116,23 @@ that you don't already use these keys:
 }
 ```
 
-Check the mods and switch to a layout:
+Check the mods and switch to the layout:
 
 ```powershell
 foreach ($m in Get-ChildItem "$env:TEMP\frieren\mods" -Directory) { herdr-app check "$HOME\.config\herdr-app\mods\$($m.Name)" }
-herdr-app do layout.switch --name frieren-journey   # or: --name frieren
+herdr-app do layout.switch --name frieren-journey
 ```
 
-Frieren Journey reads what the Frieren mods collect (usage, session lists), so install all twelve mods
-even if you only use Journey.
+The layout uses all twelve mods: the four `journey-*` mods draw the party, places and tabs from what
+the other eight collect (usage, session lists, accounts).
 
 ## Quick start
 
 | Do this | What happens |
 |---|---|
-| `Ctrl+Shift+L` | cycle layouts (back to yours, to Frieren and to Frieren Journey) |
+| `Ctrl+Shift+L` | cycle layouts (back to yours and to Frieren Journey) |
+| Click a party card | focus that agent's terminal |
+| Rename a tab to `Fern`, `Stark`, … | that tab's agent becomes that character |
 | Click a session in **Claude sessions** / **Codex sessions** | resume it in a new tab in its folder, or focus it if it's already open |
 | Right-click a session | continue with another account, hand over to the other agent, or hide it |
 | `Ctrl+Shift+S` | search every session. `Tab` switches filter, `↑`/`↓` move, `Enter` opens, `Esc` closes |
@@ -151,9 +140,7 @@ even if you only use Journey.
 | Right-click a Codex chip | spend one free reset pass (asks first; it can't be undone) |
 | `Ctrl+Shift+R` or `Results` | open the results panel for the focused terminal's folder |
 | `Ctrl+V` in a terminal | paste text, files, or a screenshot as an attachment |
-| `Ctrl+Shift+B` | fold the sidebar to a 44px rail |
-| Click a party card (Journey) | focus that agent's terminal |
-| Rename a tab to `Fern`, `Stark`, … (Journey) | that tab's agent becomes that character |
+| `Ctrl+Shift+B` | fold the sidebar to a 44px rail of faces |
 
 ### More than one account
 
@@ -180,18 +167,17 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
 ## Customize
 
 - **Wallpaper**: replace `backgrounds/frieren.jpg` (same name), or change `background.image` in
-  `layouts/frieren.json` / `layouts/frieren-journey.json`.
+  `layouts/frieren-journey.json`.
 - **Terminal see-through**: `terminal_opacity` in the layout (`0.4` now; `1` is solid, `0.2` shows the
   wallpaper clearly).
 - **Usage bar width**: the `usage` block is a fixed `818px`, sized for 2 Claude and 5 Codex accounts.
   Allow about 78px per Claude chip, 104px per Codex chip and 90px for the button.
-- **Colors**: `themes/frieren-ink.json` (dark), `themes/frieren-paper.json` (light) and
-  `themes/frieren-journey.json`. The alpha in `chrome`, `surface`, `popover` and `background` controls
-  how translucent each part is.
-- **Who plays whom** (Journey): characters are handed out in roster order and each tab keeps its own.
+- **Colors**: `themes/frieren-journey.json`. The alpha in `chrome`, `surface`, `popover` and
+  `background` controls how translucent each part is.
+- **Who plays whom**: characters are handed out in roster order and each tab keeps its own.
   Name a tab after a character, or map tab names in `mods/journey-party/jobs.json`:
   `{ "api": "stark", "docs": "fern" }`.
-- **Which place a space is** (Journey): picked from the space's name. Pin one in
+- **Which place a space is**: picked from the space's name. Pin one in
   `mods/journey-spaces/places.json`: `{ "my-project": "camp" }` (`capital`, `ruins`, `meadow`, `camp`,
   `tower`, `street`, `tree`, `moon`).
 
@@ -199,13 +185,13 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
 
 These mods are trusted code that runs on your machine. Before installing, know that they:
 
-- **run programs**: `python`, `powershell`, `codex.exe app-server`, `hc`, `explorer`, and (Journey)
+- **run programs**: `python`, `powershell`, `codex.exe app-server`, `hc`, `explorer`, and
   `git status` / `git rev-parse` in each terminal's folder.
 - **read files outside their folder**: your Claude and Codex homes, the desktop apps' session data,
   and each account's login credentials (to read usage).
 - **use the network**: each Claude account's OAuth access token goes only to `api.anthropic.com`
   (usage and profile; never printed, stored or refreshed), and the Codex app-server talks to OpenAI.
-  The Journey mods add no network use.
+  Nothing else goes out.
 - **write** caches to `%LOCALAPPDATA%\herdr-sessions`, `%LOCALAPPDATA%\herdr-claude-sessions` and
   `~/.config/herdr-app/.thumbs`.
 
@@ -214,36 +200,32 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
 ## Known limits
 
 - Windows only.
-- `Ctrl+V` smart paste works only while one of these layouts is shown. In other layouts that binding
-  does nothing: use `Ctrl+Shift+V`, or remove the `terminal` → `ctrl-v` key.
+- `Ctrl+V` smart paste works only while this layout is shown. In other layouts that binding does
+  nothing: use `Ctrl+Shift+V`, or remove the `terminal` → `ctrl-v` key.
 - The Claude list needs the Claude desktop app. Without the Codex app's `state_5.sqlite`, the Codex list
   shows a read error.
 - The Claude usage endpoint rate-limits frequent polling. The gauges read every 5 minutes and wait
   out `Retry-After` (`wait`).
-- Journey: an account whose usage has no 5-hour window shows HP as `—`.
+- An account whose usage has no 5-hour window shows HP as `—`.
 
 ## Uninstall
 
-Delete `layouts/frieren.*`, `layouts/frieren-journey.*`, `themes/frieren-*.json`,
-`backgrounds/frieren.jpg`, the twelve folders in `mods/` (`usage-gauge`, `claude-sessions`,
-`codex-sessions`, `session-menu`, `session-search`, `pane-account`, `results-panel`, `smart-paste`,
-`journey-chrome`, `journey-spaces`, `journey-party`, `journey-tabs`) and the keys above. Switch back
-with `Ctrl+Shift+L`.
+Delete `layouts/frieren-journey.*`, `themes/frieren-journey.json`, `backgrounds/frieren.jpg`, the
+twelve folders in `mods/` (`usage-gauge`, `claude-sessions`, `codex-sessions`, `session-menu`,
+`session-search`, `pane-account`, `results-panel`, `smart-paste`, `journey-chrome`, `journey-spaces`,
+`journey-party`, `journey-tabs`) and the keys above. Switch back with `Ctrl+Shift+L`.
 
 ## What's in this repo
 
 ```
-layouts/frieren.json            Frieren layout (and frieren.png, its settings preview)
-layouts/frieren-journey.json    Frieren Journey layout (and frieren-journey.png)
-themes/frieren-ink.json         dark glass theme
-themes/frieren-paper.json       light glass theme
-themes/frieren-journey.json     navy and gold theme for Journey
+layouts/frieren-journey.json    the layout (and frieren-journey.png, its settings preview)
+themes/frieren-journey.json     navy and gold theme
 backgrounds/frieren.jpg         2560×1440 wallpaper
-mods/                           eight shared mods + four journey-* mods (with their pictures)
+mods/                           eight tool mods + four journey-* mods (with their pictures)
 keys.json                       the key bindings to merge
 RECIPE.md                       the full build brief (exact sizes, colors, behavior)
-preview.png, preview-journey.png  screenshots
-NOTICE, LICENSES/               attribution for the code derived from Herdr and herdr-traveler
+preview.png                     screenshot
+NOTICE, LICENSES/               attribution and license text for the derived code
 ```
 
 Want to rebuild it from scratch or change how it works? [`RECIPE.md`](RECIPE.md) describes every part
@@ -269,20 +251,20 @@ you hold the rights to one of them and want it removed, please open an issue.
 | `mods/journey-spaces/art/tree.jpg` | [wallhaven gpl8d3](https://wallhaven.cc/w/gpl8d3) |
 | `mods/journey-spaces/art/moon.jpg` | [wallhaven 9omppk](https://wallhaven.cc/w/9omppk) |
 
-The magic circle, sparkle, grimoire and quill icons were drawn for this layout. The Journey mods are
-modified copies of [herdr-traveler](https://github.com/franky5440-afk/herdr-traveler)'s mods by Frank
-Lin, which derive from Herdr's built-in mods (both Apache License 2.0); see [`NOTICE`](NOTICE).
+The magic circle, sparkle, grimoire and quill icons were drawn for this layout. Some mods are modified
+copies of Apache-2.0 licensed code; [`NOTICE`](NOTICE) lists them, and the license text is in
+`LICENSES/`.
 
 ---
 
 ## 한국어 안내
 
-[Herdr](https://herdr.dev) 데스크톱 앱용 Windows 레이아웃 두 가지예요. Claude Code와 Codex를 계정 여러 개로
-나란히 쓰기 좋게 만들었어요. 화면 글자는 영어예요.
+[Herdr](https://herdr.dev) 데스크톱 앱용 Windows 레이아웃이에요. Claude Code와 Codex를 계정 여러 개로
+나란히 쓰기 좋게 만들었고, 프리렌 세계의 여행 파티처럼 꾸몄어요. 화면 글자는 영어예요.
 
-- **Frieren Journey:** 에이전트마다 프리렌 등장인물 카드가 붙고, HP는 5시간 한도, MP는 주간 한도에서
-  남은 양이에요. 스페이스마다 여행지 그림이, 탭마다 캐릭터 얼굴이 붙어요.
-- **Frieren:** 배경화면 위에 반투명 유리 느낌으로 얹은 기본형이에요.
+- **파티 카드:** 에이전트마다 프리렌 등장인물 카드가 붙어요. HP는 5시간 한도, MP는 주간 한도에서
+  남은 양이에요.
+- **여행지와 얼굴:** 스페이스마다 여행지 그림이, 탭마다 캐릭터 얼굴이 붙어요.
 - **세션 목록:** 왼쪽에 Claude·Codex 세션이 날짜별로 정리돼요. 클릭하면 이어서 열리고,
   우클릭하면 다른 계정이나 다른 에이전트로 넘길 수 있어요.
 - **세션 찾기:** `Ctrl+Shift+S`로 모든 세션을 검색해요.

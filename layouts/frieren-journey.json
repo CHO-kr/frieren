@@ -1,7 +1,7 @@
 {
   "id": "root",
   "cloned_from": {
-    "name": "frieren",
+    "name": "main",
     "version": "0.1.11"
   },
   "type": "row",
