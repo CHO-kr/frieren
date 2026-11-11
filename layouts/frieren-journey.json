@@ -164,7 +164,7 @@
   ],
   "background": { "image": "backgrounds/frieren.jpg", "fit": "cover" },
   "theme": "frieren-journey",
-  "terminal_opacity": 0.75,
+  "terminal_opacity": 0.4,
   "terminal_padding": [14, 12],
   "divider": { "width": 1, "color": "border" },
   "titlebar": "none",

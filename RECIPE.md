@@ -14,8 +14,8 @@ A second layout, **Frieren Journey**, puts the same tools in an RPG party look; 
 ## What you see
 
 Left to right: a 268px sidebar, then the work column. No system title bar (`"titlebar": "none"`).
-Behind everything is `backgrounds/frieren.jpg` (2560×1440, `fit: cover`). Terminals are 75% opaque
-(`terminal_opacity: 0.75`), so the picture shows through softly. Sidebars and bars are about 82% opaque.
+Behind everything is `backgrounds/frieren.jpg` (2560×1440, `fit: cover`). Terminals are 40% opaque
+(`terminal_opacity: 0.4`), so the picture shows through clearly. Sidebars and bars are about 82% opaque.
 
 **Sidebar** (268px, not resizable by drag; folds to a 44px rail with Ctrl+Shift+B), top to bottom:
 - Brand row, 46px: Herdr's own `workspace-chrome` (logo, search, sidebar toggle). Dragging it moves the window.
@@ -115,7 +115,7 @@ row 42px [`usage` (`usage-gauge`, 818px, `window_drag`), `tabs` (`tabs`, `window
 {mod: "pane-account"}, height: 30, position: "top", reveal: "always"}, border, focus, radius: 10, gap:
 8, lone: true}}`, `panel` column (hidden; a `panel-body` stack of `files` / `changes`), `results` block
 (`results-panel`, 400px, hidden)], `status` block (`workspace-status`, 28px)]. Root also sets
-`background`, `theme: {light: "frieren-paper", dark: "frieren-ink"}`, `terminal_opacity: 0.75`,
+`background`, `theme: {light: "frieren-paper", dark: "frieren-ink"}`, `terminal_opacity: 0.4`,
 `terminal_padding: [14, 12]`, `traffic_lights: [12, 16]`, `preview`. No node has its own background.
 
 **Shipped mods used**: `workspace-chrome`, `spaces`, `agents`, `tabs`, `files`, `changes`,
@@ -236,7 +236,7 @@ at the same path if you like.
 ## Done when
 
 - `herdr-app check` passes for each of the eight mod folders, and `layout.switch {name: "frieren"}`
-  shows the wallpaper through 75%-opaque terminals, the 268px sidebar with four lists, the gauges and
+  shows the wallpaper through 40%-opaque terminals, the 268px sidebar with four lists, the gauges and
   the tab pills in one 42px bar, and 30px pane headers.
 - Within a few seconds of opening, every account has a chip with a %, or `wait` with the wait in its
   tooltip. A click re-reads, and the tooltip lists every window with its reset time.
@@ -267,7 +267,7 @@ Frieren mods (it reads their caches) plus four of its own.
 ## What you see
 
 Same frame as Frieren: a 268px sidebar and the work column, no system title bar, `backgrounds/frieren.jpg`
-behind everything (`fit: cover`) and `terminal_opacity: 0.75`. Corners are square and frames are gold.
+behind everything (`fit: cover`) and `terminal_opacity: 0.4`. Corners are square and frames are gold.
 
 **Sidebar**, top to bottom:
 - Brand row, 46px (`journey-chrome`, `window_drag`): Frieren's face (22px) in a gold frame, `Herdr`, then

@@ -37,7 +37,7 @@ Both layouts:
   folder, with image and video thumbnails, a preview window, and an "Attach to agent" button.
 - **Smart paste** (`Ctrl+V`): pastes text and copied files. A screenshot on the clipboard is saved as a
   PNG and attached, so Claude Code and Codex pick it up.
-- **Glass look**: terminals are 75% opaque over the wallpaper, and sidebars, menus and dialogs are
+- **Glass look**: terminals are 40% opaque, so the wallpaper shows through clearly, and sidebars, menus and dialogs are
   translucent too.
 
 Frieren Journey adds:
@@ -181,7 +181,7 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
 
 - **Wallpaper**: replace `backgrounds/frieren.jpg` (same name), or change `background.image` in
   `layouts/frieren.json` / `layouts/frieren-journey.json`.
-- **Terminal see-through**: `terminal_opacity` in the layout (`0.75` now; `1` is solid, `0.2` shows the
+- **Terminal see-through**: `terminal_opacity` in the layout (`0.4` now; `1` is solid, `0.2` shows the
   wallpaper clearly).
 - **Usage bar width**: the `usage` block is a fixed `818px`, sized for 2 Claude and 5 Codex accounts.
   Allow about 78px per Claude chip, 104px per Codex chip and 90px for the button.
