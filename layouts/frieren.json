@@ -244,7 +244,7 @@
     "light": "frieren-paper",
     "dark": "frieren-ink"
   },
-  "terminal_opacity": 0.2,
+  "terminal_opacity": 0.75,
   "terminal_padding": [
     14,
     12

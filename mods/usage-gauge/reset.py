@@ -43,7 +43,7 @@ def answer(want):
             if "error" in msg:
                 raise RuntimeError(msg["error"].get("message", "app-server error"))
             return msg["result"]
-    sys.exit("app-server가 답하지 않았어요.")
+    sys.exit("app-server didn't answer.")
 
 
 def available():
@@ -58,7 +58,7 @@ def available():
         if credits is not None and (credits.get("credits") is not None or credits.get("availableCount") == 0):
             passes = [c for c in credits.get("credits") or [] if c.get("status") == "available"]
             return sorted(passes, key=lambda c: c.get("expiresAt") or float("inf"))
-    sys.exit("Codex에서 초기화권 목록을 받지 못했어요. 잠시 뒤 다시 해 보세요.")
+    sys.exit("Couldn't get the reset pass list from Codex. Try again in a moment.")
 
 
 try:

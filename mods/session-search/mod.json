@@ -1,1 +1,1 @@
-{ "place": "none", "title": "세션 찾기", "overlay": { "kind": "popup", "at": "top", "offset": 40, "width": 680, "height": 0.8 } }
+{ "place": "none", "title": "Find a session", "overlay": { "kind": "popup", "at": "top", "offset": 40, "width": 680, "height": 0.8 } }

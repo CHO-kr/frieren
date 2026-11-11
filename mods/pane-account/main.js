@@ -68,11 +68,11 @@ export default class Pane extends View {
     if (fresh || this.asking) return;
     this.asking = true;
     cx.spawn(async (cx) => {
-      let found = { key, at: Date.now(), error: "확인 실패" };
+      let found = { key, at: Date.now(), error: "lookup failed" };
       try {
         const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
         const out = JSON.parse(r.stdout || "{}");
-        found = out.account ? { key, at: Date.now(), account: out.account, model: out.model ?? null } : { key, at: Date.now(), error: out.error || "확인 실패" };
+        found = out.account ? { key, at: Date.now(), account: out.account, model: out.model ?? null } : { key, at: Date.now(), error: out.error || "lookup failed" };
       } catch (e) {
         found.error = String(e?.message ?? e);
       }
@@ -100,16 +100,16 @@ export default class Pane extends View {
       .child(svg(`mods/pane-account/${icon}.svg`).size(14));
   }
 
-  // "claude2 · Opus 5.5 · 주간 3%" for an agent pane; the tooltip has the login and the details.
+  // "claude2 · Opus 5.5 · weekly 3%" for an agent pane; the tooltip has the login and the details.
   account(t, p) {
     if (!isAgent(p)) return null;
     const key = `${p.terminal}|${p.app ?? p.program?.key}`;
     const found = this.found?.key === key ? this.found : null;
     const start = launched(p.terminal) ?? (found?.account ? { account: found.account, model: found.model } : null);
     if (!start) {
-      const why = found?.error ? `셸에서 직접 실행한 에이전트인데 계정을 읽지 못했어요.\n(${found.error})` : "계정을 확인하는 중이에요.";
+      const why = found?.error ? `An agent started by hand in a shell; couldn't read its account.\n(${found.error})` : "Checking the account…";
       return div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.raised).text_size(10.5).text_color(t.dim)
-        .id(`pa-${p.pane}`).tooltip(why).child("계정 ?");
+        .id(`pa-${p.pane}`).tooltip(why).child("account ?");
     }
     const info = (shared(start.account.startsWith("codex") ? "sessions.codex" : "sessions.claude")?.accounts ?? []).find((a) => a.name === start.account);
     const usage = shared("usage.accounts")?.[start.account];
@@ -117,11 +117,11 @@ export default class Pane extends View {
     const model = start.model ?? (start.account.startsWith("claude") ? info?.model : null);
     const used = usage?.used;
     const level = used == null ? t.dim : used >= 90 ? t.blocked : used >= 70 ? t.working : t.muted;
-    const parts = [start.account, modelName(model), used != null ? `${usage.window ?? "주간"} ${used}%` : null].filter(Boolean);
+    const parts = [start.account, modelName(model), used != null ? `${usage.window ?? "weekly"} ${used}%` : null].filter(Boolean);
     const tip = [
-      `계정: ${start.account}${usage?.login || info?.email ? ` · ${usage?.login || info?.email}` : ""}`,
-      model ? `모델: ${model}` : "모델: 작업에 저장된 모델",
-      used != null ? `${usage.window ?? "주간"} 사용량: ${used}%` : null,
+      `Account: ${start.account}${usage?.login || info?.email ? ` · ${usage?.login || info?.email}` : ""}`,
+      model ? `Model: ${model}` : "Model: the one saved with the task",
+      used != null ? `${usage.window ?? "weekly"} usage: ${used}%` : null,
       usage?.warning ? `⚠ ${usage.warning}` : null,
     ].filter(Boolean).join("\n");
     return div().id(`pa-${p.pane}`).flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.raised).text_size(10.5)

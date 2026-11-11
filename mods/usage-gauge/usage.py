@@ -68,7 +68,7 @@ def claude_login(name, token, recorded):
                 login = (json.load(r).get("account") or {}).get("email")
         except (urllib.error.URLError, ValueError):
             pass
-    warning = f"실제 로그인은 {login} 계정이에요 (프로필 기록은 {recorded})." if login and recorded and login != recorded else None
+    warning = f"Actually logged in as {login} (the profile says {recorded})." if login and recorded and login != recorded else None
     return {"token_fp": fp, "login": login, "warning": warning}
 
 
@@ -90,9 +90,9 @@ def claude_usage(name, folder, profile):
             # Claude Code's own sessions read this endpoint too; asking again before the
             # server's Retry-After only keeps the account limited longer.
             seconds = int(e.headers.get("retry-after") or 600)
-            raise Wait(f"이 계정의 사용량 조회가 잠시 막혀 있어요(요청이 많음). {round(seconds / 60)}분 뒤에 다시 읽어요.", seconds)
-        raise RuntimeError({401: "로그인이 만료됐어요. 이 계정으로 Claude Code를 한 번 열면 갱신돼요."}.get(e.code, f"HTTP {e.code}"))
-    windows = [("5시간", data.get("five_hour")), ("주간", data.get("seven_day"))]
+            raise Wait(f"Usage reads for this account are rate-limited. Reading again in {round(seconds / 60)} min.", seconds)
+        raise RuntimeError({401: "Login expired. Open Claude Code once with this account to renew it."}.get(e.code, f"HTTP {e.code}"))
+    windows = [("5h", data.get("five_hour")), ("weekly", data.get("seven_day"))]
     out["windows"] = [{"label": label, "used": round(w["utilization"]), "resets": ms(w.get("resets_at"))}
                       for label, w in windows if w and w.get("utilization") is not None]
     return out
@@ -101,18 +101,18 @@ def claude_usage(name, folder, profile):
 def span(minutes):
     """A window's name from its length: Codex plans differ (5 hours and a week, or a week, or 30 days)."""
     if not minutes:
-        return "한도"
+        return "limit"
     if minutes <= 6 * 60:
-        return f"{round(minutes / 60)}시간"
+        return f"{round(minutes / 60)}h"
     if minutes <= 8 * 24 * 60:
-        return "주간"
-    return f"{round(minutes / 1440)}일"
+        return "weekly"
+    return f"{round(minutes / 1440)}d"
 
 
 def codex_exe():
     exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
     if not exes:
-        raise RuntimeError("codex.exe를 찾지 못했어요.")
+        raise RuntimeError("codex.exe not found.")
     return exes[0]
 
 
@@ -153,7 +153,7 @@ def codex_usage(name, home):
                 if "error" in msg:
                     raise RuntimeError(msg["error"].get("message", "app-server error"))
                 return msg["result"]
-        raise RuntimeError("app-server가 답하지 않았어요.")
+        raise RuntimeError("app-server didn't answer.")
 
     try:
         send({"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "herdr-usage", "version": "0.1"}}})
@@ -214,7 +214,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         agent = "claude" if fn is claude_usage else "codex"
         if future is None:
             row = dict(waiting(agent, args))
-            row["error"] = f"이 계정의 사용량 조회가 잠시 막혀 있어요(요청이 많음). {max(1, round((row['retry_at'] - now) / 60000))}분 뒤에 다시 읽어요."
+            row["error"] = f"Usage reads for this account are rate-limited. Reading again in {max(1, round((row['retry_at'] - now) / 60000))} min."
             if agent == "claude":
                 # The login check is another endpoint, so it still runs while usage waits.
                 try:
@@ -226,10 +226,16 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             continue
         try:
             row = future.result()
-            row.update(checked=now, stale=False, error=None, retry_at=None)
+            row.update(checked=now, stale=False, error=None, retry_at=None, login_needed=None)
         except Exception as e:
             row = dict(previous.get((agent, args[0])) or {"agent": agent, "name": args[0], "windows": []})
-            row.update(stale=True, error=str(e) or type(e).__name__,
+            error = str(e) or type(e).__name__
+            # Logged out (Codex: no auth.json, app-server says "authentication required";
+            # Claude: 401). The chip says so instead of showing the last numbers as if current.
+            login_needed = "authentication required" in error or error.startswith("Login expired")
+            if login_needed and agent == "codex":
+                error = f"Logged out, so usage can't be read. Run `{args[0]} login` in a terminal to log in again."
+            row.update(stale=True, error=error, login_needed=login_needed or None,
                        retry_at=now + e.seconds * 1000 if isinstance(e, Wait) else None)
         accounts.append(row)
 

@@ -1,0 +1,15 @@
+Frieren layouts for Herdr
+
+mods/journey-chrome, mods/journey-spaces, mods/journey-tabs and mods/journey-party are modified
+copies of the traveler-chrome, traveler-spaces, traveler-tabs and traveler-agents mods of the
+Traveler layout for Herdr (https://github.com/franky5440-afk/herdr-traveler, Copyright 2026
+Frank Lin, Apache License 2.0). Those in turn derive from the built-in workspace-chrome, spaces
+and tabs mods of Herdr 0.1.11 (Apache License 2.0). mods/pane-account is a modified copy of
+Herdr's built-in pane mod.
+
+Changes in the journey mods: Frieren characters and places instead of Traveler's, English text,
+HP/MP bars from the usage-gauge readings, the account, model and resumed session title on each
+card, a "Journey · Day N" counter, and Windows window buttons. The license text is in
+LICENSES/Apache-2.0.txt.
+
+Images are not covered by the Apache License. See "Credits" in README.md.

@@ -19,7 +19,7 @@ function find(node, id) {
 function share(data) {
   const brief = {};
   for (const a of data?.accounts ?? []) {
-    const weekly = (a.windows ?? []).find((w) => w.label === "주간") ?? (a.windows ?? []).at(-1);
+    const weekly = (a.windows ?? []).find((w) => w.label === "weekly") ?? (a.windows ?? []).at(-1);
     brief[a.name] = { used: weekly?.used ?? null, window: weekly?.label ?? null, login: a.login || a.email || null, warning: a.warning ?? null };
   }
   if (JSON.stringify(shared("usage.accounts")) !== JSON.stringify(brief)) setShared("usage.accounts", brief);
@@ -29,8 +29,8 @@ const CACHE = () => `${home()}/AppData/Local/herdr-sessions/usage.json`;
 
 function until(ms, now) {
   const m = Math.max(0, Math.round((ms - now) / 60000));
-  if (m < 60) return `${m}분 뒤`;
-  if (m < 24 * 60) return `${Math.floor(m / 60)}시간 ${m % 60}분 뒤`;
+  if (m < 60) return `in ${m}m`;
+  if (m < 24 * 60) return `in ${Math.floor(m / 60)}h ${m % 60}m`;
   const d = new Date(ms);
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -44,7 +44,7 @@ function compact(n) {
 
 function ago(ms, now) {
   const m = Math.floor((now - ms) / 60000);
-  return m < 1 ? "방금" : m < 60 ? `${m}분 전` : `${Math.floor(m / 60)}시간 전`;
+  return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
 }
 
 export default class UsageGauge extends View {
@@ -75,18 +75,18 @@ export default class UsageGauge extends View {
   // A right click on a Codex chip offers its reset pass, behind a confirm.
   askReset(a, windows) {
     const count = a.resets?.count ?? 0;
-    if (!count) return notify({ title: "남은 한도 초기화권이 없어요", body: a.name, level: "info" });
+    if (!count) return notify({ title: "No reset passes left", body: a.name, level: "info" });
     const w = windows[0];
     const used = w?.used ?? 0;
     openOverlay({
       mod: "session-menu", kind: "dialog", width: 440, height: 250, props: {
         confirm: {
-          heading: `${a.name} 한도 초기화권을 쓸까요?`,
-          body: `남은 초기화권 ${count}개 중 가장 먼저 만료되는 1개를 써서 ${w?.label ?? ""} 사용량(${used}%)을 0%로 되돌려요.`,
-          hint: `쓴 초기화권은 되돌릴 수 없어요.${used < 70 ? ` 지금은 ${used}%라 아껴 두는 게 나을 수 있어요.` : ""}`,
+          heading: `Use a reset pass on ${a.name}?`,
+          body: `Spends the soonest-expiring of your ${count} reset passes to set ${w?.label ?? ""} usage (${used}%) back to 0%.`,
+          hint: `A spent pass can't be undone.${used < 70 ? ` At ${used}% it may be worth saving.` : ""}`,
           actions: [
-            { label: "취소", action: null },
-            { label: "초기화권 쓰기", primary: true, action: { resetPass: { account: a.name } } },
+            { label: "Cancel", action: null },
+            { label: "Use reset pass", primary: true, action: { resetPass: { account: a.name } } },
           ],
         },
       },
@@ -115,27 +115,34 @@ export default class UsageGauge extends View {
     const now = Date.now();
     const level = (used) => (used >= 90 ? t.blocked : used >= 70 ? t.working : t.done);
     const bar = (w, span) => div().w_full().h(3).rounded(2).bg(t.raised)
-      .child(div().h_full().rounded(2).w(Math.max(2, Math.round(span * Math.min(100, w.used ?? 0) / 100))).bg(level(w.used ?? 0)));
+      .child(div().h_full().rounded(2).w(Math.max(2, Math.round(span * Math.min(100, w.used ?? 0) / 100))).bg(w.used == null ? t.dim : level(w.used)));
 
     const chip = (a) => {
-      const all = a.windows ?? [];
+      // A failed read keeps the last numbers, but a window that has reset since then no longer
+      // has that use: it shows as unknown (empty bar), not the old percent (codex4 showed 98%
+      // for a 5-hour window that had reset hours before, 2026-11-04).
+      const expired = (w) => a.stale && w.resets != null && w.resets <= now;
+      const all = (a.windows ?? []).map((w) => (expired(w) ? { ...w, used: null, was: w.used } : w));
       // Claude shows its weekly limit only (the 5-hour one stays in the tooltip); Codex shows what its plan has.
-      const weekly = all.filter((w) => w.label === "주간");
+      const weekly = all.filter((w) => w.label === "weekly");
       const windows = a.agent === "claude" && weekly.length ? weekly : all;
-      const top = windows.reduce((m, w) => Math.max(m, w.used ?? 0), 0);
+      const known = windows.filter((w) => w.used != null);
+      const top = known.reduce((m, w) => Math.max(m, w.used), 0);
       const tip = [
         `${a.name}${a.login || a.email ? ` · ${a.login || a.email}` : ""}${a.plan ? ` (${a.plan})` : ""}`,
         a.warning ? `⚠ ${a.warning}` : null,
-        a.credits ? `크레딧 잔액: ${a.credits.unlimited ? "무제한" : a.credits.balance != null ? Math.round(a.credits.balance).toLocaleString() : "없음"}` : null,
-        a.resets?.count ? `한도 초기화권: ${a.resets.count}개${a.resets.expires ? ` (가장 빠른 만료 ${until(a.resets.expires, now)})` : ""}` : null,
-        ...[...windows, ...all.filter((w) => !windows.includes(w))].map((w) => `${w.label}: ${w.used}% · ${w.resets ? `${until(w.resets, now)} 초기화` : ""}`),
-        a.error ? `읽지 못함: ${a.error}` : null,
-        a.checked ? `확인: ${ago(a.checked, now)}${a.stale ? " (지난 값)" : ""}` : null,
-        "클릭: 다시 읽기",
-        a.resets?.count ? "오른쪽 클릭: 한도 초기화권 쓰기 (확인 후)" : null,
+        a.credits ? `Credits: ${a.credits.unlimited ? "unlimited" : a.credits.balance != null ? Math.round(a.credits.balance).toLocaleString() : "none"}` : null,
+        a.resets?.count ? `Reset passes: ${a.resets.count}${a.resets.expires ? ` (first expires ${until(a.resets.expires, now)})` : ""}` : null,
+        ...[...windows, ...all.filter((w) => !windows.includes(w))].map((w) => w.used == null
+          ? `${w.label}: unknown (reset since the last reading, ${w.was}%)`
+          : `${w.label}: ${w.used}%${w.resets ? ` · resets ${until(w.resets, now)}` : ""}`),
+        a.error ? `Couldn't read: ${a.error}` : null,
+        a.checked ? `Checked: ${ago(a.checked, now)}${a.stale ? " (old value)" : ""}` : null,
+        "Click: refresh",
+        a.resets?.count ? "Right-click: use a reset pass (asks first)" : null,
       ].filter(Boolean).join("\n");
       // A Codex chip also says, beside its bar, its credits left and free reset passes ("43.0k ↺2").
-      const money = a.credits ? `${a.credits.unlimited ? "무제한" : compact(a.credits.balance)}${a.resets?.count ? ` ↺${a.resets.count}` : ""}` : null;
+      const money = a.credits ? `${a.credits.unlimited ? "∞" : compact(a.credits.balance)}${a.resets?.count ? ` ↺${a.resets.count}` : ""}` : null;
       const width = money ? 104 : 78;
       return v_flex()
         .id(`ug-${a.agent}-${a.name}`)
@@ -159,7 +166,9 @@ export default class UsageGauge extends View {
           .justify_between()
           .text_size(10.5)
           .child(div().truncate().text_color(a.warning ? t.working : a.stale ? t.dim : t.muted).child(a.warning ? `${a.name}!` : a.name))
-          .child(div().font_medium().text_color(windows.length ? (a.stale ? t.dim : level(top)) : t.dim).child(windows.length ? `${top}%` : a.retry_at ? "대기" : "—")))
+          .child(a.login_needed
+            ? div().font_medium().text_color(t.working).child("login")
+            : div().font_medium().text_color(known.length ? (a.stale ? t.dim : level(top)) : t.dim).child(known.length ? `${top}%` : a.retry_at ? "wait" : "—")))
         .when(!money, (el) => el.children(windows.slice(0, 2).map((w) => bar(w, width - 12))))
         .when(Boolean(money), (el) => el.child(h_flex().gap(5).items_center()
           .child(div().flex_1().min_w(0).children(windows.slice(0, 1).map((w) => bar(w, 44))))
@@ -190,18 +199,18 @@ export default class UsageGauge extends View {
       .bg(open ? t.selected : t.raised)
       .text_color(open ? t.foreground : t.muted)
       .hover((el) => el.text_color(t.foreground))
-      .tooltip(open ? "결과물 패널 닫기 (Ctrl+Shift+R)" : "결과물 패널 열기 (Ctrl+Shift+R)")
+      .tooltip(open ? "Close the results panel (Ctrl+Shift+R)" : "Open the results panel (Ctrl+Shift+R)")
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click(() => run("layout.toggle", { id: "results" }))
       .child(svg("mods/workspace-chrome/files.svg").size(13))
-      .child("결과물");
+      .child("Results");
     return h_flex()
       .size_full()
       .px(10)
       .gap(12)
       .items_center()
       .bg(t.chrome)
-      .when(!accounts.length, (el) => el.child(div().text_size(11).text_color(t.dim).child(this.busy ? "사용량 읽는 중…" : "사용량 정보 없음")))
+      .when(!accounts.length, (el) => el.child(div().text_size(11).text_color(t.dim).child(this.busy ? "Reading usage…" : "No usage data")))
       .children([group("claude"), group("codex")].filter(Boolean))
       .when(Boolean(resultsButton), (el) => el.child(resultsButton));
   }

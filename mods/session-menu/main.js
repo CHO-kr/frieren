@@ -56,9 +56,9 @@ export default class SessionMenu extends View {
       const rows = Math.ceil((action.confirm.body.length + action.confirm.hint.length) / 46);
       return openOverlay({ mod: "session-menu", kind: "dialog", width: 420, height: 150 + rows * 19, props: { confirm: action.confirm } });
     }
-    if (action.toCodex) return this.work(cx, "Codex로 넘기는 중…", "옮기지 못했어요", async () => ({ tab: await this.toCodex(action.toCodex) }));
-    if (action.toClaude) return this.work(cx, "Claude로 넘길 기록을 정리하는 중…", "옮기지 못했어요", async () => ({ tab: await this.toClaude(action.toClaude) }));
-    if (action.resetPass) return this.work(cx, "한도 초기화권을 쓰는 중…", "초기화권을 쓰지 못했어요", () => this.resetPass(action.resetPass));
+    if (action.toCodex) return this.work(cx, "Handing over to Codex…", "Couldn't hand over", async () => ({ tab: await this.toCodex(action.toCodex) }));
+    if (action.toClaude) return this.work(cx, "Preparing the handover to Claude…", "Couldn't hand over", async () => ({ tab: await this.toClaude(action.toClaude) }));
+    if (action.resetPass) return this.work(cx, "Using a reset pass…", "Couldn't use the reset pass", () => this.resetPass(action.resetPass));
   }
 
   // Shows what's happening, then closes. The job returns what to do next: open a tab, say
@@ -83,11 +83,11 @@ export default class SessionMenu extends View {
   async resetPass({ account }) {
     const r = await this.python("usage-gauge/reset.py", [account]);
     const said = {
-      reset: { title: `${account} 한도를 초기화했어요`, body: `남은 초기화권: ${r.left}개`, level: "success" },
-      nothingToReset: { title: "초기화할 사용량이 없었어요", body: "초기화권은 쓰이지 않았어요.", level: "info" },
-      noCredit: { title: "남은 초기화권이 없어요", body: account, level: "warning" },
-      alreadyRedeemed: { title: "이미 쓴 초기화권이에요", body: "게이지를 다시 읽어 확인해 주세요.", level: "warning" },
-    }[r.outcome] ?? { title: `결과: ${r.outcome}`, level: "info" };
+      reset: { title: `Reset ${account}'s limit`, body: `Reset passes left: ${r.left}`, level: "success" },
+      nothingToReset: { title: "Nothing to reset", body: "No reset pass was used.", level: "info" },
+      noCredit: { title: "No reset passes left", body: account, level: "warning" },
+      alreadyRedeemed: { title: "That pass was already used", body: "Refresh the gauge to check.", level: "warning" },
+    }[r.outcome] ?? { title: `Result: ${r.outcome}`, level: "info" };
     return { notice: { ...said, timeout: 10000 }, command: "usage-gauge.refresh" };
   }
 

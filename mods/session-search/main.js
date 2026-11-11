@@ -9,16 +9,16 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { home, readTextFile, run, theme, props, closeOverlay, shared, setShared } from "herdr";
 
 const STORE = () => `${home()}/AppData/Local/herdr-sessions`;
-const KINDS = [{ id: "all", label: "전체" }, { id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }];
+const KINDS = [{ id: "all", label: "All" }, { id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }];
 const ROW = 38;
 const SHOWN = 11;
 
 function ago(ms) {
   const m = Math.floor((Date.now() - ms) / 60000);
-  if (m < 1) return "방금";
-  if (m < 60) return `${m}분`;
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
-  return h < 24 ? `${h}시간` : `${Math.floor(h / 24)}일`;
+  return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
 const base = (path) => (path ?? "").split(/[\\/]/).filter(Boolean).at(-1) ?? "";
@@ -32,7 +32,7 @@ export default class SessionSearch extends View {
     // A panel's search button says which list to start on.
     this.kind = shared("sessions.search.kind") ?? "all";
     if (shared("sessions.search.kind")) setShared("sessions.search.kind", null);
-    this.input = InputState.new({ placeholder: "제목이나 폴더 이름으로 찾기…" });
+    this.input = InputState.new({ placeholder: "Search by title or folder…" });
     this.input.on("change", (_e, cx) => {
       this.filter = this.input.value();
       this.at = 0;
@@ -57,12 +57,12 @@ export default class SessionSearch extends View {
       const hiddenCodex = new Set(shared("sessions.hidden.codex") ?? []);
       this.items = [
         ...(claude?.sessions ?? []).filter((s) => !s.archived).map((s) => ({
-          agent: "claude", id: s.cli, title: s.title || "(제목 없음)", cwd: s.cwd, last: s.last ?? 0,
-          linked: Boolean(s.link), busy: s.desktop ? "앱" : null, hidden: hiddenClaude.has(s.cli),
+          agent: "claude", id: s.cli, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
+          linked: Boolean(s.link), busy: s.desktop ? "app" : null, hidden: hiddenClaude.has(s.cli),
         })),
         ...(codex?.threads ?? []).map((s) => ({
-          agent: "codex", id: s.id, title: s.title || "(제목 없음)", cwd: s.cwd, last: s.last ?? 0,
-          linked: Boolean(s.link), busy: s.open ? "열림" : null, hidden: hiddenCodex.has(s.id),
+          agent: "codex", id: s.id, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
+          linked: Boolean(s.link), busy: s.open ? "open" : null, hidden: hiddenCodex.has(s.id),
         })),
       ].sort((a, b) => b.last - a.last);
       cx.notify();
@@ -128,7 +128,7 @@ export default class SessionSearch extends View {
           .child(div().truncate().text_color(s.hidden ? t.dim : t.foreground).child(s.title))
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(s.cwd ?? "")))
         .when(s.linked, (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("⇄")))
-        .when(s.hidden, (el) => el.child(tag("숨김", t.dim)))
+        .when(s.hidden, (el) => el.child(tag("hidden", t.dim)))
         .when(Boolean(s.busy), (el) => el.child(tag(s.busy, t.dim)))
         .child(div().w(40).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(s.last)));
     };
@@ -157,7 +157,7 @@ export default class SessionSearch extends View {
         cx.notify();
       })
       .child(h_flex().items_center().gap(6)
-        .child(div().flex_1().text_size(15).font_semibold().text_color(t.foreground).child("세션 찾기"))
+        .child(div().flex_1().text_size(15).font_semibold().text_color(t.foreground).child("Find a session"))
         .children(KINDS.map((k) => div()
           .id(`ss-kind-${k.id}`)
           .px(9)
@@ -176,7 +176,7 @@ export default class SessionSearch extends View {
       .child(h_flex().h(36).flex_none().px(10).gap(8).items_center().rounded(9).border_1().border_color(t.accent).bg(t.background)
         .child(svg("mods/workspace-chrome/search.svg").size(15).text_color(t.dim))
         .child(Input.new(this.input).flex_1().h_full().text_size(12.8).text_color(t.foreground))
-        .child(div().text_size(11).text_color(t.dim).child(`${rows.length}개`)))
+        .child(div().text_size(11).text_color(t.dim).child(`${rows.length}`)))
       .child(v_flex()
         .id("ss-list")
         .h(SHOWN * ROW)
@@ -189,8 +189,8 @@ export default class SessionSearch extends View {
           cx.notify();
         })
         .when(!rows.length, (el) => el.child(div().px(14).py(10).text_size(12).text_color(t.dim)
-          .child(this.items.length ? "맞는 세션이 없어요." : "목록을 읽는 중… (패널이 한 번 목록을 읽은 뒤에 찾을 수 있어요)")))
+          .child(this.items.length ? "No matching sessions." : "Reading the lists… (search works once the panels have read them)")))
         .children(shown.map(row)))
-      .child(div().text_size(10.5).text_color(t.dim).child("Enter 열기 · 오른쪽 클릭 다른 계정·에이전트 · Tab 전체/Claude/Codex 바꾸기"));
+      .child(div().text_size(10.5).text_color(t.dim).child("Enter open · Right-click other account or agent · Tab switch All / Claude / Codex"));
   }
 }

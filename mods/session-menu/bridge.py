@@ -64,14 +64,14 @@ class Turns:
     def flush(self):
         t, notes = self.tally, []
         if t["commands"]:
-            notes.append(f"명령 {len(t['commands'])}개 실행 (마지막: `{short(command(t['commands'][-1]), 120)}`)")
+            notes.append(f"Ran {len(t['commands'])} commands (last: `{short(command(t['commands'][-1]), 120)}`)")
         if t["files"]:
             files = list(dict.fromkeys(f for f in t["files"] if f))
-            notes.append("파일 수정: " + ", ".join(f"`{f}`" for f in files[:8]) + (f" 외 {len(files) - 8}개" if len(files) > 8 else ""))
+            notes.append("Edited files: " + ", ".join(f"`{f}`" for f in files[:8]) + (f" and {len(files) - 8} more" if len(files) > 8 else ""))
         if t["tools"]:
-            notes.append("도구: " + ", ".join(list(dict.fromkeys(t["tools"]))[:6]))
+            notes.append("Tools: " + ", ".join(list(dict.fromkeys(t["tools"]))[:6]))
         if t["searches"]:
-            notes.append("웹 검색: " + "; ".join(short(q, 60) for q in t["searches"][:3]))
+            notes.append("Web searches: " + "; ".join(short(q, 60) for q in t["searches"][:3]))
         for v in t.values():
             v.clear()
         if notes:
@@ -101,17 +101,17 @@ def write_doc(name, heading, meta, turns, agent):
             used += len(turn[1])
         kept.reverse()
         dropped = len(turns) - len(kept) - (1 if head else 0)
-        turns = ([head] if head else []) + [("gap", f"중간 기록 {dropped}개는 길어서 생략했습니다.")] + kept
+        turns = ([head] if head else []) + [("gap", f"{dropped} entries in the middle were left out for length.")] + kept
     lines = [f"# {heading}", "", *meta, ""]
     previous = None
     for role, text in turns:
         if role == "note":
-            lines += [f"> 작업 기록: {text}", ""]
+            lines += [f"> Work log: {text}", ""]
         elif role == "gap":
             lines += [f"> … {text}", ""]
         else:
             if role != previous:
-                lines += ["## 사용자" if role == "user" else f"## {agent}", ""]
+                lines += ["## User" if role == "user" else f"## {agent}", ""]
             lines += [text, ""]
         previous = role if role in ("user", "agent") else previous
     os.makedirs(HANDOFF, exist_ok=True)
@@ -180,7 +180,7 @@ def codex_turns(thread, since):
         if pos <= since or kind is None:
             continue
         if kind == "userMessage":
-            parts = [c.get("text", "") if c.get("type") == "text" else "[이미지 첨부]" for c in data.get("content", [])]
+            parts = [c.get("text", "") if c.get("type") == "text" else "[image attached]" for c in data.get("content", [])]
             out.say("user", "\n".join(p for p in parts if p))
         elif kind == "agentMessage":
             out.say("agent", data.get("text", ""))
@@ -310,11 +310,11 @@ def to_codex(path, cwd, title):
         out = {"mode": "resume", "thread": thread["id"], "cwd": thread["cwd"] or cwd, "title": link["title"]}
         if turns:
             link["moves"] = link.get("moves", 0) + 1
-            out["doc"] = write_doc(f"{link['id']}-{link['moves']:02d}-claude-to-codex.md", f"Claude에서 이어서 한 작업: {link['title']}",
-                                   [f"- Claude 세션: `{session}` · 넘긴 때 {stamp()}",
-                                    "- 지난번에 Codex에서 넘어간 뒤 Claude에서 한 대화입니다. 도구 사용은 요약만 남겼습니다."], turns, "Claude")
-            out["prompt"] = (f"그동안 Claude에서 이 작업을 이어서 했어. Claude 쪽 작업 기록은 {out['doc']} 에 있어. "
-                             "읽고 무엇이 바뀌었는지 짧게 정리한 다음, 내 다음 지시를 기다려 줘.")
+            out["doc"] = write_doc(f"{link['id']}-{link['moves']:02d}-claude-to-codex.md", f"Work continued in Claude: {link['title']}",
+                                   [f"- Claude session: `{session}` · handed over {stamp()}",
+                                    "- The conversation in Claude since the last handover from Codex. Tool use is summarized."], turns, "Claude")
+            out["prompt"] = (f"I've continued this task in Claude since then. The Claude-side log is at {out['doc']}. "
+                             "Read it, sum up briefly what changed (in the language we've been using), then wait for my next instruction.")
         link["claude"].update(synced=end, path=path)
         link["updated"] = NOW
     else:
@@ -346,18 +346,18 @@ def to_claude(tid, config):
         out = {"mode": "resume", "session": link["claude"]["session"], "path": path, "cwd": thread["cwd"], "title": link["title"]}
         if turns:
             link["moves"] = link.get("moves", 0) + 1
-            out["doc"] = write_doc(f"{link['id']}-{link['moves']:02d}-codex-to-claude.md", f"Codex에서 이어서 한 작업: {link['title']}",
-                                   [f"- Codex 작업: `{tid}` (모델 {thread['model'] or '?'}) · 넘긴 때 {stamp()}",
-                                    "- 지난번에 Claude에서 넘어간 뒤 Codex에서 한 대화입니다. 도구 사용은 요약만 남겼습니다."], turns, "Codex")
-            out["prompt"] = (f"그동안 Codex에서 이 작업을 이어서 했어. Codex 쪽 작업 기록은 {out['doc']} 에 있어. "
-                             "읽고 무엇이 바뀌었는지 짧게 정리한 다음, 내 다음 지시를 기다려 줘.")
+            out["doc"] = write_doc(f"{link['id']}-{link['moves']:02d}-codex-to-claude.md", f"Work continued in Codex: {link['title']}",
+                                   [f"- Codex task: `{tid}` (model {thread['model'] or '?'}) · handed over {stamp()}",
+                                    "- The conversation in Codex since the last handover from Claude. Tool use is summarized."], turns, "Codex")
+            out["prompt"] = (f"I've continued this task in Codex since then. The Codex-side log is at {out['doc']}. "
+                             "Read it, sum up briefly what changed (in the language we've been using), then wait for my next instruction.")
         link["codex"]["synced"] = end
         link["claude"]["path"] = path
         link["updated"] = NOW
     else:
         turns, end = codex_turns(thread, -1)
         if not turns:
-            sys.exit("이 Codex 작업에는 옮길 대화가 없어요.")
+            sys.exit("This Codex task has no conversation to hand over.")
         session = str(uuid.uuid4())
         if link:
             links.remove(link)
@@ -365,13 +365,13 @@ def to_claude(tid, config):
                 "claude": {"session": session, "config": config, "path": None, "synced": 0},
                 "codex": {"thread": tid, "synced": end}}
         links.append(link)
-        doc = write_doc(f"{link['id']}-00-codex.md", f"Codex 작업 기록: {thread['title']}",
-                        [f"- Codex 작업: `{tid}` (모델 {thread['model'] or '?'}) · 넘긴 때 {stamp()}",
-                         f"- 작업 폴더: `{thread['cwd']}`",
-                         "- Codex에서 하던 대화를 그대로 옮긴 기록입니다. 도구 사용은 요약만 남겼습니다."], turns, "Codex")
+        doc = write_doc(f"{link['id']}-00-codex.md", f"Codex task log: {thread['title']}",
+                        [f"- Codex task: `{tid}` (model {thread['model'] or '?'}) · handed over {stamp()}",
+                         f"- Working folder: `{thread['cwd']}`",
+                         "- The Codex conversation, carried over as is. Tool use is summarized."], turns, "Codex")
         out = {"mode": "new", "session": session, "cwd": thread["cwd"], "title": thread["title"], "doc": doc,
-               "prompt": (f"Codex에서 하던 작업 «{thread['title']}»을 이어서 맡아 줘. 지금까지의 대화 기록은 {doc} 에 있어. "
-                          "먼저 읽고 어디까지 됐는지 짧게 정리한 다음, 내 다음 지시를 기다려 줘.")}
+               "prompt": (f"Please take over the Codex task «{thread['title']}». The conversation so far is at {doc}. "
+                          "Read it first, sum up briefly where things stand (in the language we've been using), then wait for my next instruction.")}
     save_links(links)
     return out
 

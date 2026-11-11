@@ -1,6 +1,6 @@
 // Results: the newest files in the focused terminal's folder (images, video, sound, documents,
 // code), with thumbnails. A click shows an image, Markdown or text in a preview window and opens
-// anything else in its default app; "첨부" puts the file into the agent's prompt as if dropped
+// anything else in its default app; "Attach" puts the file into the agent's prompt as if dropped
 // there. Toggle with Ctrl+Shift+R. recent.py lists the files and makes the small pictures.
 // The same mod draws the preview window (props.preview).
 
@@ -9,11 +9,11 @@ import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
 import { exec, focused, run, theme, settings, notify, appHome, home, layout, readTextFile, watchFolder, openOverlay, closeOverlay, props } from "herdr";
 
 const KINDS = [
-  { id: "all", label: "전체" },
-  { id: "image", label: "이미지" },
-  { id: "media", label: "영상·소리", kinds: ["video", "audio"] },
-  { id: "doc", label: "문서" },
-  { id: "code", label: "코드" },
+  { id: "all", label: "All" },
+  { id: "image", label: "Images" },
+  { id: "media", label: "Video · audio", kinds: ["video", "audio"] },
+  { id: "doc", label: "Docs" },
+  { id: "code", label: "Code" },
 ];
 const TEXT = new Set(["md", "txt", "json", "csv", "srt", "vtt", "log", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "ps1", "css", "sh", "bat", "cmd", "toml", "yaml", "yml", "xml"]);
 const LANG = { ts: "js", tsx: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", ps1: "bash", sh: "bash" };
@@ -30,10 +30,10 @@ const shown = () => find(layout(), "results")?.hidden !== true;
 
 function ago(ms) {
   const m = Math.floor((Date.now() - ms) / 60000);
-  if (m < 1) return "방금";
-  if (m < 60) return `${m}분 전`;
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
-  return h < 24 ? `${h}시간 전` : `${Math.floor(h / 24)}일 전`;
+  return h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
 }
 
 function bytes(n) {
@@ -52,7 +52,7 @@ const reveal = (path) => exec("explorer.exe", [`/select,${path}`]);
 // The file goes on the clipboard as a copied file and is pasted into the pane the agent is in,
 // which Herdr does "as if dropped": the path lands in the prompt (Claude Code attaches an image).
 async function attach(path, pane) {
-  if (!pane) return notify({ title: "첨부할 칸이 없어요", body: "에이전트가 있는 칸을 한 번 누른 뒤 다시 해 주세요.", level: "info" });
+  if (!pane) return notify({ title: "No pane to attach to", body: "Click a pane with an agent, then try again.", level: "info" });
   await exec("powershell", ["-NoProfile", "-Command", "& { param($p) Set-Clipboard -LiteralPath $p }", path]);
   run("pane.focus", { pane });
   run("terminal.paste");
@@ -83,7 +83,7 @@ export default class Results extends View {
     return this.folder?.toLowerCase() === home().toLowerCase();
   }
 
-  // Follows the focused terminal's folder (unless pinned) and remembers its pane for "첨부".
+  // Follows the focused terminal's folder (unless pinned) and remembers its pane for "Attach".
   follow(cx) {
     const f = focused();
     if (f?.terminal && f.pane) this.pane = f.pane;
@@ -157,10 +157,10 @@ export default class Results extends View {
         if (f.kind === "image") {
           const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/results-panel/recent.py`, "--preview", f.path]);
           if (r.code === 0) this.picture = JSON.parse(r.stdout).image;
-          else this.problem = "이미지를 열지 못했어요.";
+          else this.problem = "Couldn't open the image.";
         } else {
           const text = await readTextFile(f.path);
-          if (text === null) this.problem = "파일이 없어졌어요.";
+          if (text === null) this.problem = "The file is gone.";
           else if (f.ext === "md") this.text = text;
           else {
             const t = theme();
@@ -169,7 +169,7 @@ export default class Results extends View {
           }
         }
       } catch {
-        this.problem = "미리 볼 수 없는 파일이에요 (너무 크거나 읽을 수 없음). 기본 앱으로 열어 보세요.";
+        this.problem = "Can't preview this file (too large or unreadable). Open it in its default app.";
       }
       cx.notify();
     });
@@ -202,7 +202,7 @@ export default class Results extends View {
             .child(TextView.markdown(`md-${f.path}`, this.text).selectable(true).scrollable(true).size_full())
           : this.code
             ? div().flex_1().min_h(0).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Editor.new(this.code).size_full())
-            : div().p(16).text_color(t.dim).child("여는 중…");
+            : div().p(16).text_color(t.dim).child("Opening…");
     return v_flex()
       .id("result-preview")
       .track_focus(this.handle)
@@ -214,10 +214,10 @@ export default class Results extends View {
         .child(v_flex().flex_1().min_w(0)
           .child(div().truncate().font_medium().text_color(t.foreground).child(f.name))
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(short(f.path))))
-        .child(button("rp-attach", "에이전트에 첨부", () => { closeOverlay(props().overlay); attach(f.path, pane); }))
-        .child(button("rp-open", "기본 앱으로 열기", () => openFile(f.path)))
-        .child(button("rp-reveal", "폴더에서 보기", () => reveal(f.path)))
-        .child(button("rp-close", "닫기", () => closeOverlay(props().overlay))))
+        .child(button("rp-attach", "Attach to agent", () => { closeOverlay(props().overlay); attach(f.path, pane); }))
+        .child(button("rp-open", "Open in default app", () => openFile(f.path)))
+        .child(button("rp-reveal", "Show in folder", () => reveal(f.path)))
+        .child(button("rp-close", "Close", () => closeOverlay(props().overlay))))
       .child(body);
   }
 
@@ -262,15 +262,15 @@ export default class Results extends View {
         else if (this.hovered === f.path) this.hovered = null;
         cx.notify();
       })
-      .tooltip(`${f.path}\n클릭: ${f.kind === "image" || TEXT.has(f.ext) ? "미리보기" : "기본 앱으로 열기"}`)
+      .tooltip(`${f.path}\nClick: ${f.kind === "image" || TEXT.has(f.ext) ? "preview" : "Open in default app"}`)
       .on_click(() => this.open(f))
       .child(f.thumb ? div().w(56).h(40).flex_none().rounded(6).bg(t.raised).child(image(f.thumb).size_full()) : badge(f))
       .child(v_flex().flex_1().min_w(0)
         .child(div().truncate().text_color(t.foreground).child(f.name))
         .child(div().truncate().text_size(10.5).text_color(t.dim).child(`${f.dir === "." ? "" : `${f.dir} · `}${ago(f.mtime)} · ${bytes(f.size)}`)))
       .when(this.hovered === f.path, (el) => el
-        .child(small(`rs-at-${i}`, "첨부", "지금 칸의 에이전트 입력창에 넣기 (클립보드를 잠깐 써요)", () => attach(f.path, this.pane)))
-        .child(small(`rs-fd-${i}`, "폴더", "탐색기에서 보기", () => reveal(f.path))));
+        .child(small(`rs-at-${i}`, "Attach", "Put it in this pane's agent prompt (briefly uses the clipboard)", () => attach(f.path, this.pane)))
+        .child(small(`rs-fd-${i}`, "Folder", "Show in Explorer", () => reveal(f.path))));
 
     const icon = (id, path, tip, on, act) => div()
       .id(id)
@@ -285,15 +285,15 @@ export default class Results extends View {
       .bg(t.chrome)
       .text_size(12.5)
       .child(h_flex().px(14).h(40).flex_none().gap(10).items_center()
-        .child(div().text_size(11.5).font_medium().text_color(t.dim).child("결과물"))
+        .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Results"))
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(short(this.folder)))
         .child(icon("rs-pin", this.locked ? "mods/workspace-chrome/pin-off.svg" : "mods/workspace-chrome/pin.svg",
-          this.locked ? "폴더 고정 풀기 (지금 칸을 따라가요)" : "이 폴더에 고정", this.locked, (cx) => { this.locked = !this.locked; cx.notify(); }))
-        .child(icon("rs-folder", "mods/workspace-chrome/folder.svg", "폴더를 탐색기로 열기", false, () => this.folder && openFile(this.folder)))
+          this.locked ? "Unpin the folder (follow the focused pane)" : "Pin this folder", this.locked, (cx) => { this.locked = !this.locked; cx.notify(); }))
+        .child(icon("rs-folder", "mods/workspace-chrome/folder.svg", "Open the folder in Explorer", false, () => this.folder && openFile(this.folder)))
         .child(this.busy
           ? svg("mods/workspace-chrome/spinner.svg").size(13).flex_none().text_color(t.dim).spin(900)
-          : icon("rs-refresh", "mods/claude-sessions/refresh.svg", "다시 읽기", false, (cx) => this.refresh(cx, true)))
-        .child(icon("rs-close", "mods/workspace-chrome/x.svg", "패널 닫기 (Ctrl+Shift+R)", false, () => run("layout.hide", { id: "results" }))))
+          : icon("rs-refresh", "mods/claude-sessions/refresh.svg", "Refresh", false, (cx) => this.refresh(cx, true)))
+        .child(icon("rs-close", "mods/workspace-chrome/x.svg", "Close the panel (Ctrl+Shift+R)", false, () => run("layout.hide", { id: "results" }))))
       .child(h_flex().px(12).pb(6).gap(4).flex_none()
         .children(KINDS.map((k) => div()
           .id(`rs-k-${k.id}`)
@@ -310,8 +310,8 @@ export default class Results extends View {
           .on_click((_e, cx) => { this.kind = k.id; cx.notify(); })
           .child(k.label))))
       .when(Boolean(this.error), (el) => el.child(div().px(14).py(4).text_size(11.5).text_color(t.blocked).child(this.error)))
-      .when(!this.folder, (el) => el.child(div().px(14).py(8).text_size(12).text_color(t.dim).child("터미널 칸을 한 번 누르면 그 칸의 폴더를 보여 줘요.")))
-      .when(this.files !== null && !list.length, (el) => el.child(div().px(14).py(8).text_size(12).text_color(t.dim).child("이 폴더에는 최근 결과물이 없어요.")))
+      .when(!this.folder, (el) => el.child(div().px(14).py(8).text_size(12).text_color(t.dim).child("Click a terminal pane to show its folder.")))
+      .when(this.files !== null && !list.length, (el) => el.child(div().px(14).py(8).text_size(12).text_color(t.dim).child("No recent results in this folder.")))
       .child(v_flex().id("rs-list").flex_1().min_h(0).pb(8).overflow_y_scrollbar().children(list.map(row)));
   }
 }
