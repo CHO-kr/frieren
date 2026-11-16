@@ -325,6 +325,7 @@ mods/journey-*                  the four Frieren Journey mods (with their pictur
 mods/ (the rest)                eight tool mods both layouts use
 keys.json                       the key bindings to merge
 RECIPE.md                       the full build brief (exact sizes, colors, behavior)
+preview.png                     the picture the Herdr gallery shows (Frieren Pixel)
 docs/                           the screenshots and animations in this README
 NOTICE, LICENSES/               attribution and license text for the derived code and the fonts
 ```

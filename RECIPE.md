@@ -1,18 +1,27 @@
-# Frieren Journey
+# Frieren Pixel & Journey
 
-A Windows workspace for running several Claude Code and Codex accounts side by side, dressed as a
-fantasy party from *Frieren*. A wallpaper fills the whole window and shows through translucent terminals
-and sidebars. Every agent is a party member card with HP/MP bars, every space a place on the journey,
-every tab its member's face. The left sidebar also lists every saved Claude and Codex session (click one
-to resume it, right-click to open it with another account or hand it to the other agent). The top bar
-shows each account's plan usage as small gauges. Every pane header says which account and model that
-agent runs on. A results panel shows the newest files in the focused terminal's folder, with
-thumbnails. UI text is English.
+Two Windows layouts for running several Claude Code and Codex accounts side by side, dressed as a
+fantasy party from *Frieren*. Frieren Pixel draws every agent as a 16-bit pixel party member who acts
+out the tool it runs (spells for commands, a grimoire for reads, runes for edits, flight for web
+searches) over seven pixel scenes that change every hour. Frieren Journey has painted portraits and a
+wallpaper behind translucent terminals. Both list every saved Claude and Codex session (click to
+resume, right-click to switch account or agent), show each account's plan usage, and say which account
+and model each pane runs on. UI text is English.
 
-![Frieren Journey](docs/journey.png)
+![Frieren Pixel](preview.png)
 
 This file describes Frieren Journey first. [Frieren Pixel](#frieren-pixel) at the end is built on top
 of it and lists only what differs.
+
+# Frieren Journey
+
+A wallpaper fills the whole window and shows through translucent terminals and sidebars. Every agent is
+a party member card with HP/MP bars, every space a place on the journey, every tab its member's face.
+The left sidebar also lists every saved Claude and Codex session. The top bar shows each account's plan
+usage as small gauges. Every pane header says which account and model that agent runs on. A results
+panel shows the newest files in the focused terminal's folder, with thumbnails.
+
+![Frieren Journey](docs/journey.png)
 
 ## What you see
 
