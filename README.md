@@ -4,8 +4,9 @@ Two Windows layouts for the [Herdr](https://herdr.dev) desktop app, made for run
 **Claude Code** and **Codex** accounts side by side, dressed as a fantasy party from *Frieren*:
 
 - **Frieren Pixel** (`frieren-pixel`, new): 16-bit pixel art. Every agent is a little pixel party
-  member who acts out what the agent is doing right now, and the panes of a tab fight, eat and sleep
-  together in a scene in the pane header. The background scene changes every hour, and the colors follow it.
+  member who acts out what the agent is doing right now, and the panes of the shown tab fight, camp
+  and celebrate together on a battle stage above the terminals. The background scene changes every
+  hour, and the colors follow it.
 - **Frieren Journey** (`frieren-journey`): painted portraits and a Frieren wallpaper behind
   translucent terminals.
 
@@ -21,44 +22,103 @@ account's plan usage in the top bar, and the account and model on every pane. Pi
 
 ### The party acts out what each agent is doing
 
-The party reads each agent's screen every 1.5 seconds. When the agent starts a tool, its party
-member switches to that tool's motion, both on the card in the sidebar and in the pane header's scene
-(below). The header also shows a battle line with the tool's detail, for example
-`Frieren casts a spell! · vs Wyvern  npm test`.
+The party reads each agent's screen every 1.5 seconds and sorts what it is doing into fifteen kinds of
+work. Each kind has its own motion on the party card and its own move on the battle stage (below).
+The pane header shows a battle line with the tool's detail, for example
+`Stark unleashes a combo!  npm test`.
 
 ![Every motion for Frieren, Stark and Heiter](docs/motions.gif)
 
-| The agent is… | Tools it reads from the screen | The party member… |
+### The battle stage: the tab's party in one scene
+
+Above the terminals, a stage shows the tab you're looking at: a strip of the background picture
+itself (its pixel art at the sprites' pixel size, as wide as the window allows, up to 1024 px), with
+one member per pane, up to four, each a different character. A gold ring marks the focused pane's
+member. Beside it, a battle log tells what just happened and what each member is doing, and under it
+each pane's slim header says the same in one line.
+
+![The stage in the app, captured live: the boss falls to Himmel's Hero's Flash, then the next battle's first and second waves](docs/stage.gif)
+
+While any agent of the tab works, the party fights a long battle (40 to 60 seconds before it starts
+over) in three waves: the background's monster, another monster, then the Stone Golem as the boss,
+who gets enraged (`RAGE!`) halfway and strikes twice. Each member's turns go through the kinds of work
+its agent did in the last five minutes, with a normal attack in between, so the battle tells what the
+agent has been up to. New kinds join the next battle within a minute, without cutting off the one
+that's playing.
+
+![Four parties fight: normal attacks, the monster's charges and blasts, specials, a knock-out and the next wave](docs/battles.gif)
+
+Every kind of work has its own turn:
+
+![What each kind of work looks like on the stage](docs/kinds.gif)
+
+| The agent is… | Read from the screen | Its turn on the stage |
 |---|---|---|
-| thinking | no tool running, or a finished tool group | walks on down the road |
-| running a command | `Bash`, `PowerShell`, `Shell`, `Run`, `Monitor` | casts a spell, strikes, or casts holy light |
-| reading or searching | `Read`, `Grep`, `Glob`, `Search`, `List`, `Skill` | reads the grimoire |
-| editing files | `Edit`, `Write`, `Update`, `Create`, `apply_patch` | carves golden runes in the air |
-| on the web | `WebSearch`, `WebFetch`, `Fetch`, browsing | scouts with flight magic |
-| starting a subagent | `Agent`, `Task`, `Explore`, `Plan` | summons an ally |
-| waiting for you | Herdr marks it blocked (a permission or a question) | calls for help with a `!` |
-| done | Herdr marks it done | Quest complete! jumps in a field of flowers |
-| idle | Herdr marks it idle | rests by the road, `Zzz` |
+| thinking | no tool running | a normal attack, after a pause to think it over (`…`) or after gathering mana |
+| running a command | `Bash`, `PowerShell`, `Ran …` | a normal attack (below) |
+| running tests or a linter | `test`, `pytest`, `jest`, `lint`, `check` … | a combo: four quick hits, or a five-shot volley, `COMBO!` |
+| building or rendering | `build`, `make`, `tsc`, `cargo`, `render`, `ffmpeg` … | hammers a blade at an anvil, `FORGED!`; the blade flies over and falls on the monster |
+| using git | `git`, `gh` | plants the party's banner, `RALLY!`; everyone charges together |
+| installing | `npm install`, `pip install`, `winget` … | drinks a potion, `ATK UP`, then a critical hit |
+| deleting | `rm`, `Remove-Item`, `clean`, `prune` … | calls down a meteor storm, `BOOM!` |
+| reading files | `Read`, `cat`, `Get-Content`, `Skill` | scans the monster for its weak point, `WEAK!`, then strikes it |
+| searching | `Grep`, `Glob`, `Search`, `rg`, `ls` … | follows the trail with a magnifying glass, footprints behind, `FOUND!` |
+| editing files | `Edit`, `Write`, `Update`, `apply_patch` | a rune circle erupts under the monster |
+| planning | `Update Todos`, `TodoWrite`, `Plan` | unrolls a map, draws arrows on the ground, `TACTICS`: the next strike crits |
+| waiting | `Monitor`, `sleep`, `hc wait`, `Wait-Job` … | stands guard with an hourglass, blocks the monster's attack, `COUNTER` |
+| on the web | `WebSearch`, `WebFetch`, `curl` … | flies up and dives on the monster |
+| making images or audio | `gen_image`, `tts`, `grok` … | conjures two illusions of itself; all three strike at once |
+| starting subagents | `Agent`, `Task`, `Explore` | a summoning circle: another character (one not in the tab) joins the fight, one per subagent, up to two |
 
-Both Claude Code's lines (`● Bash(npm test)`, `Reading 1 file…`, `⎿ $ cmd`) and Codex's (`• Ran …`)
-are understood.
+**Normal attacks** take turns, so no two in a row look the same: Stark, Eisen and Himmel slash once,
+slash twice, leap in from above, or dash in; mages fire a bolt, two bolts, a bolt charged in a magic
+circle, or Zoltraak; priests throw a holy orb, two orbs, a charged orb, or rain holy light and heal the
+party.
 
-### The pane header: the party together in one scene
+**Special moves (필살기)**: every turn fills the member's **SP gauge** over its head. When it's full
+(it blinks), and on the last blow of every wave, the member uses its special: the stage dims, the
+move's name unfurls on a banner, and the screen flashes as the big hit lands.
 
-Each pane header opens with a 512×64 scene cut from the background picture itself (a 256×32 strip
-of its pixel art at the sprites' pixel size). Every pane of the tab sends its member into that scene, up to four, so a
-split tab shows its agents working side by side. When a tab has more than one pane, a gold ring marks
-this pane's member.
+![All sixteen special moves, four at a time](docs/specials.gif)
 
-![The pane header's scene in each situation](docs/header.gif)
+All sixteen at once, as stills: [docs/specials.png](docs/specials.png).
+
+| Character | Special | What happens |
+|---|---|---|
+| Frieren | Zoltraak | a great magic circle, then a beam as thick as the monster |
+| Fern | Zoltraak Barrage | a storm of a dozen bolts |
+| Serie | Rain of Light | spears of light fall from the sky |
+| Flamme | Hellfire | pillars of fire erupt under the monster |
+| Denken | Tempest | a whirlwind swallows the monster |
+| Lawine | Ice Lances | ice spikes burst out of the ground all the way to the monster |
+| Kanne | Tidal Wave | a wave rolls across the stage and crashes |
+| Methode | Binding Chains | chains bind the monster, then bolts |
+| Wirbel | Thunderbolt | three bolts of lightning |
+| Land | Mirror Army | four copies of Land appear and all fire |
+| Ubel | Severing Cut | the monster is cut again and again |
+| Stark | Sky Splitter | a leap into the sky and one blow straight down |
+| Eisen | Earthshaker | the axe into the ground, rocks erupting up to the monster |
+| Himmel | Hero's Flash | gone in a flash; the cuts open a moment later |
+| Heiter | Holy Judgment | a pillar of light, and the party is healed |
+| Sein | Sanctuary | a holy circle heals the party, then light rains down |
+
+Every two turns the monster strikes back: a shot at someone, a charge across the stage at the front
+member, or a blast at the whole party. Members block (warriors and priests), dodge, or take damage and
+get healed by a priest. A member whose agent needs you calls `HELP!`. Damage numbers rise, the HP bar
+drains, the last hit knocks the monster out and the party cheers; after the boss, `VICTORY!` and a
+treasure chest. Both Claude Code's lines (`● Bash(npm test)`, `Reading 1 file…`, `⎿ $ cmd`) and
+Codex's (`• Ran …`) are understood.
+
+When nobody works, the stage shows a pastime that changes every 20 minutes, and a victory when an
+agent is done:
+
+![Camp pastimes and victories](docs/pastimes.png)
 
 | The tab's agents… | The scene |
 |---|---|
-| any of them is working | a battle: the background's monster stands on the right, and a spell or sword wave flies all the way to it. It flashes and flinches as the hit lands. Three or more members face a stone golem instead |
-| one is done and none is working | the monster is gone and a treasure chest sparkles in its place |
-| all idle, by day | camp: a meal around the cooking pot, with speech bubbles of meat and hearts |
-| all idle, 22:00 to 07:00 | camp: asleep by the embers, with a bedroll in front of the tent |
-| a shell, not an agent | camp: standing by the fire |
+| all idle, by day | a meal around the cooking pot, a walk through a field of flowers with butterflies, training on straw dummies, studying grimoires, or fishing (by water: lake, snow, meadow) |
+| all idle, 22:00 to 07:00 | asleep by the embers, or one keeps watch under shooting stars |
+| one is done and none works | a treasure chest, a rare grimoire, or a mimic that bites (again) |
 
 The monsters: Wyvern (Starry Night Road), Blue Slime (Spring Dawn Meadow), Will-o'-Wisp (Meteor
 Shower), Frost Wolf (Northern Aurora), Grumpy Stump (Autumn Forest Road), Mimic (Mage Library),
@@ -67,7 +127,7 @@ Lake Serpent (Lakeside Town at Sunset) and the Stone Golem.
 ### Sixteen party members
 
 Each member's attack has its own style and color: mages fire bolts, warriors slash, priests throw
-holy light.
+holy light. Each also has a special move of its own (above).
 
 ![All sixteen party members casting](docs/roster.gif)
 
@@ -83,7 +143,7 @@ see the current scene's name. Terminals are 55% opaque, so the scene shows throu
 stays readable.
 
 The whole look follows the scene: the frames and panel gradients, the accent, the terminal tint, the
-party cards' little stages, the pane header's strip and its monster. Every scene keeps the same
+party cards' little stages, the battle stage's strip and its monster. Every scene keeps the same
 lightness, so text reads the same in all of them.
 
 ![The layout in each of the seven scenes](docs/scenes.gif)
@@ -100,18 +160,30 @@ The terminal is left empty in the animation above so each scene is easy to see.
 
 ### Also in Frieren Pixel
 
-- **Party cards**, as tall as their 64px stage: the tab name and status (the motion while working:
-  Casting, Reading, Writing, …), the member with account and model and a `Claude` / `Codex` tag, and
-  **HP** (what's left of the 5-hour limit) and **MP** (what's left of the weekly limit) bars. Hover a
-  card for its battle line.
-- **Pane headers**: the scene above, the battle line, the folder, the account, model and usage, and
-  pixel buttons to split, zoom and close.
+- **Party cards**, as tall as their 64px stage, for members who work, need you or are done (on top):
+  the tab name and status (the motion while working: Casting, Testing, Forging, …), the member with
+  account and model and a `Claude` / `Codex` tag, and **HP** (what's left of the 5-hour limit) and
+  **MP** (what's left of the weekly limit) bars. Resting members fold to one line with their face,
+  character and HP. Hover a card for its battle line. Agents that report no status to Herdr (a Claude
+  Code background job) are listed too, their status read from the screen.
+- **Pane headers**: one slim row: the character, the battle line with the tool's detail, the folder,
+  the account, model and usage, and pixel buttons to split, zoom and close.
 - **Small windows**: the usage bar shrinks and scrolls sideways, so the tabs and the window buttons
   always stay in view.
-- **Tabs as inventory slots**, each with its member's pixel face and status.
+- **Which account to use next**: in the usage bar a ★ marks the Claude account and the Codex account
+  with the most usage left (stale or logged-out readings don't count).
+
+  ![The usage bar and the tabs](docs/topbar.png)
+- **Tabs as inventory slots**, each with its member's pixel face and status. A tab you never named
+  shows a name of its own, `3 · my-repo`: the title of the session it resumed, else its repo or folder,
+  else its program (the tab itself isn't renamed; hover for where the name came from). A thin color bar
+  beside each tab's face marks its project, the same color for every tab in the same repo.
+- **The + menu** (`pixel-new-menu`) lists Claude Code and Codex once per account (`claude`, `claude2`,
+  …), the one with the most usage left first, marked `most left`.
 - **Spaces as destinations**: eight pixel place tiles (Royal Capital, Old Ruins, Flower Hill, Forest
   Camp, Rampart Watchtower, Town Street, Starlit Old Tree, Moonlit Castle) with the repo's branch and
-  ahead/behind.
+  ahead/behind. With one space the panel shrinks to a single row, leaving room for the party; a second
+  space brings back its old size.
 - **Fold the sidebar** with the button in the top-left corner: it shrinks to a 64px rail.
   `Ctrl+Shift+B` hides it completely.
 - **Pixel font everywhere**: [Galmuri](https://github.com/quiple/galmuri) (SIL OFL 1.1), which also
@@ -137,8 +209,8 @@ The terminal is left empty in the animation above so each scene is easy to see.
 
 - **Journey · Day N** in the top-left corner, counted from the day you first open either layout.
 - **Session lists for Claude and Codex**: every saved session in the sidebar, grouped by date
-  (Today, Yesterday, Last 7 days, …), with live status marks (working, needs you, done, idle).
-  Click to resume in its folder. If a terminal already runs it, that terminal gets focus.
+  (Today, Yesterday, Last 7 days, …), with live status marks (working, needs you, done, idle) and
+  `All · 7d · 30d · Older` filters with counts under the header. Click to resume in its folder. If a terminal already runs it, that terminal gets focus.
 - **Switch accounts or agents per session**: right-click a session to continue it with another
   account, or hand it to the other agent (Claude → Codex, Codex → Claude). Handed-over pairs are
   remembered (`⇄`), and later moves pass on only the new turns.
@@ -233,8 +305,8 @@ foreach ($m in Get-ChildItem "$env:TEMP\frieren\mods" -Directory) { herdr-app ch
 herdr-app do layout.switch --name frieren-pixel     # or frieren-journey
 ```
 
-Install all seventeen mods, even if you want only one layout. Eight tool mods collect usage, session
-lists and accounts. The four `journey-*` mods draw Frieren Journey, and the five `pixel-*` mods draw
+Install all eighteen mods, even if you want only one layout. Eight tool mods collect usage, session
+lists and accounts. The four `journey-*` mods draw Frieren Journey, and the six `pixel-*` mods draw
 Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spaces/places.json` and
 `pane-account`.
 
@@ -286,9 +358,14 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
   the root `colors` line, and the blocks' frame and gradient colors (colors you picked yourself are left
   alone). Set `background.image` to a picture of your own and the rotation stops. To skip scenes from
   the keyboard, add `"ctrl-alt-n": "pixel-chrome.next-scene"` to `keys.json`.
-- **The header scene**: where everyone stands and which monster each scene has are in
-  `mods/pixel-party/build/scene_art.py`, which also cuts the strips and builds the monster and prop
-  fonts; the rules (battle, treasure, camp, the night hours) are in `mods/pixel-pane/plan.js`.
+- **The battle stage**: each scene's strip, monster and anchor are in
+  `mods/pixel-party/build/stage_art.py`, which also draws the monster, effect and prop fonts; the
+  special moves, banners and SP gauge are drawn by `build/special_art.py` (whose `SPECIAL` table names
+  each character's move). Every turn, wave, special, pastime and victory is in
+  `mods/pixel-pane/plan.js` (`SP_MAX`, the turns per wave), how long a battle remembers the kinds of
+  work and how often it re-plans in `mods/pixel-pane/main.js` (`KIND_MS`, `REPLAN_MS`), and which kind
+  of work a screen line is (`RULES`, `COMMANDS`) in `classify` of `lib.js`. `build/stage_dump.mjs` + `build/stage_preview.py`
+  draw the stage as GIFs without Herdr, to try a change.
 - **Wallpaper (Frieren Journey)**: replace `backgrounds/frieren.jpg` (same name), or change
   `background.image` in `layouts/frieren-journey.json`.
 - **Terminal see-through**: `terminal_opacity` in each layout (`0.55` in Pixel, `0.4` in Journey; `1`
@@ -343,10 +420,10 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
 ## Uninstall
 
 Delete `layouts/frieren-*`, `themes/frieren-*`, `backgrounds/frieren.jpg`,
-`backgrounds/frieren-pixel-*.png`, the seventeen folders in `mods/` (`usage-gauge`,
+`backgrounds/frieren-pixel-*.png`, the eighteen folders in `mods/` (`usage-gauge`,
 `claude-sessions`, `codex-sessions`, `session-menu`, `session-search`, `pane-account`, `results-panel`,
 `smart-paste`, `journey-chrome`, `journey-spaces`, `journey-party`, `journey-tabs`, `pixel-chrome`,
-`pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`) and the keys above. Switch back with
+`pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`) and the keys above. Switch back with
 `Ctrl+Shift+L`.
 
 ## What's in this repo
@@ -356,9 +433,9 @@ layouts/frieren-pixel.json      Frieren Pixel (and frieren-pixel.png, its settin
 layouts/frieren-journey.json    Frieren Journey (and frieren-journey.png)
 themes/                         frieren-pixel (deep navy and cream) and frieren-journey (navy and gold)
 backgrounds/                    seven 2560×1440 pixel scenes and the Journey wallpaper
-mods/pixel-*                    the five Frieren Pixel mods: sprite, monster and prop fonts, faces, tiles,
-                                icons, Galmuri fonts, the scenes' palettes (pixel-chrome/scenes.js), the
-                                header strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
+mods/pixel-*                    the six Frieren Pixel mods: sprite, monster, effect, special and prop fonts, faces,
+                                tiles, icons, Galmuri fonts, the scenes' palettes (pixel-chrome/scenes.js),
+                                the stage strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
 mods/pixel-party/build/         scripts and cut sprites that build all of the above
 mods/journey-*                  the four Frieren Journey mods (with their pictures)
 mods/ (the rest)                eight tool mods both layouts use
@@ -381,9 +458,9 @@ you hold the rights to one of them and want it removed, please open an issue.
 
 | File | Source |
 |---|---|
-| `mods/pixel-party/build/spr/*.npz`, `mods/pixel-party/fonts/FrierenDot4-<name>.ttf`, `mods/pixel-party/faces/*.png` | pixel sprites cut from pose sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_all.ps1`), then grid-snapped and animated by the build scripts |
-| `mods/pixel-party/build/spr_scene/*.npz`, `mods/pixel-party/fonts/FrierenDot4-monsters.ttf`, `-props.ttf` | monsters and camp props cut from two sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_scene.ps1`), halved and animated by `build/scene_art.py` |
-| `backgrounds/frieren-pixel-*.png`, `mods/pixel-spaces/art/*.png`, `mods/pixel-party/scenes/*.png` | made with OpenAI image generation (through Codex), then reduced to a 64-color pixel grid; the header strips are 256×32 cuts of the backgrounds at half their art resolution |
+| `mods/pixel-party/build/spr/*.npz`, `mods/pixel-party/fonts/FrierenDot5-<name>.ttf`, `mods/pixel-party/faces/*.png` | pixel sprites cut from pose sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_all.ps1`), then grid-snapped and animated by the build scripts |
+| `mods/pixel-party/build/spr_scene/*.npz`, `mods/pixel-party/fonts/FrierenDot5-monsters.ttf`, `-props.ttf` | monsters and camp props cut from two sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_scene.ps1`), halved and animated by `build/stage_art.py` |
+| `backgrounds/frieren-pixel-*.png`, `mods/pixel-spaces/art/*.png`, `mods/pixel-party/scenes/*.png` | made with OpenAI image generation (through Codex), then reduced to a 64-color pixel grid; the stage strips are 512×36 cuts of the backgrounds at their art resolution |
 | `backgrounds/frieren.jpg` | composed from a Frieren portrait found on Pinterest (artist unknown) |
 | `mods/journey-party/cards/*.png`, `faces/*.png` | character images from [AniList](https://anilist.co/anime/154587) (anime 154587), resized; faces are square crops |
 | `mods/journey-spaces/art/capital.jpg` | [wallhaven x6kxyd](https://wallhaven.cc/w/x6kxyd) |
@@ -395,8 +472,11 @@ you hold the rights to one of them and want it removed, please open an issue.
 | `mods/journey-spaces/art/tree.jpg` | [wallhaven gpl8d3](https://wallhaven.cc/w/gpl8d3) |
 | `mods/journey-spaces/art/moon.jpg` | [wallhaven 9omppk](https://wallhaven.cc/w/9omppk) |
 
-The magic effects, flames, steam, speech bubbles, stage backdrops and pixel icons are drawn by code for
-Frieren Pixel (`mods/pixel-party/build/anim.py`, `scene_art.py`, `backdrop.py`, `assets.py`). The magic circle, sparkle, grimoire and
+The magic effects, battle effects (numbers, the anvil, banner, potion, meteors, map, hourglass, fishing
+rod, training dummy and the rest), flames, steam, speech bubbles, stage backdrops and pixel icons are
+drawn by code for Frieren Pixel (`mods/pixel-party/build/anim.py`, `stage_art.py`, `backdrop.py`,
+`assets.py`; `FrierenDot5-fx.ttf`), and so are the special moves, banners and SP gauge
+(`build/special_art.py`; `FrierenDot5-special.ttf`). The magic circle, sparkle, grimoire and
 quill icons were drawn for Frieren Journey. The pixel font is [Galmuri](https://github.com/quiple/galmuri)
 by Lee Minseo (quiple), under the SIL Open Font License 1.1 (`LICENSES/OFL-1.1-Galmuri.txt`). Some mods
 are modified copies of Apache-2.0 licensed code; [`NOTICE`](NOTICE) lists them, and the license text is

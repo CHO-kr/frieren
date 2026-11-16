@@ -12,7 +12,7 @@ import colrfont
 
 NAMES = ['frieren', 'fern', 'stark', 'himmel', 'heiter', 'eisen', 'sein', 'ubel', 'land', 'denken', 'methode',
          'flamme', 'serie', 'kanne', 'lawine', 'wirbel']
-FONT_VERSION = 4  # bump on every rebuild: Herdr keeps a loaded family in memory, a new name makes it load the new file
+FONT_VERSION = 5  # bump on every rebuild: Herdr keeps a loaded family in memory, a new name makes it load the new file
 FAMILY = {n: f'FrierenDot{FONT_VERSION} ' + n.capitalize() for n in NAMES}
 
 # magic per character: style (bolt | slash | holy) and colors (core, glow, deep)
@@ -40,12 +40,12 @@ STAGE_W = 80    # the session-header stage
 SOLO_W = 36     # the party-card stage
 SX = 16         # x of the character's head centre
 STAGE_BASE, SOLO_BASE = 0xE000, 0xE400
-# The session header's scene (scene_art.py): a 256-wide strip of the background, the party standing at SLOTS (head
-# centres) and a monster whose left edge is at HIT_X. A spell cast there flies all the way to the monster, so each
-# slot has its own cast glyphs (SCENE_BASE + slot * 12 + frame), 256 wide, drawn where they stand.
-SCENE_W, SCENE_BASE = 256, 0xE800
-SLOTS = [22, 48, 74, 100]
-HIT_X = 184
+# The battle stage (pixel-pane's stage block, stage_art.py) places poses and effects itself, frame by frame: a member
+# runs up to the monster, a beam grows segment by segment. These glyphs start at BATTLE_BASE, in BATTLE order
+# (key, width, frames); pose glyphs have the head at SX like the stage frames, effects sit at the attack tip's height.
+BATTLE_BASE = 0xEC00
+BATTLE = [('attack', 80, 1), ('hurt', 80, 2), ('guard', 80, 2), ('run', 80, 2), ('swing', 80, 3), ('jump', 80, 1),
+          ('beam', 16, 2), ('head', 12, 2), ('wave', 12, 2), ('orb', 12, 2), ('burst', 24, 3), ('arc', 32, 2)]
 FLIPPED = {'rest_l', 'eat_l', 'stand_l', 'alert_l'}  # facing left (the far side of the campfire)
 
 
@@ -465,41 +465,141 @@ def bubble(cv, x, y, icon, flip=False):
               {k: hexc(v) for k, v in ICON_COLORS.items()})
 
 
-def scene_casts(name, poses, anchors):
-    """The cast animation for each scene slot: charge, a projectile all the way to HIT_X, the burst there (frames
-    9-10, when the monster flinches), 12 frames at 90 ms like 'cast'. Drawn in a SCENE_W canvas."""
+def tip(poses, anchors):
+    """where the attack pose's weapon tip is: (x from the head centre, row)"""
+    tx, ty = tip_of(poses['attack'])
+    return SX - int(round(anchors['attack'])) + tx + 1 - SX, H - poses['attack'].shape[0] + ty
+
+
+def tinted(poses, color, k):
+    out = {}
+    for p, s in poses.items():
+        t = s.astype(float)
+        t[..., :3] = t[..., :3] * (1 - k) + np.array(color, float) * k
+        out[p] = t.round().astype(np.uint8)
+    return out
+
+
+def battle_glyphs(name, poses, anchors):
+    """key -> frames (BATTLE order): the stage's own poses and this character's effects in its colors"""
     m = MAGIC[name]
     style = m[0]
-    tx, ty = tip_of(poses['attack'])
-    out = []
-    for head in SLOTS:
-        ax = head - int(round(anchors['attack']))
-        ay = H - poses['attack'].shape[0]
-        tipx, tipy = ax + tx + 1, ay + ty
-        span = HIT_X + 2 - tipx
-        steps = [tipx + 2 + span * k // 5 for k in range(1, 6)]
-        A = lambda pose, dx=0, head=head: (lambda cv: place(cv, poses, anchors, pose, dx, 0, head=head))
+    core, glow, deep = hexc(m[1]), hexc(m[2], 230), hexc(m[3], 170)
+    dtx, TY = tip(poses, anchors)
+    TX = SX + dtx
+    fade = lambda c, k: (c[0], c[1], c[2], int(c[3] * k))
 
-        def proj(cv, x, tipx=tipx, tipy=tipy):
-            if style == 'bolt':
-                bolt(cv, tipx, x, tipy, m)
-            elif style == 'slash':
-                slash(cv, x, tipy, m)
-            else:
-                holy(cv, x, tipy, m)
-        ops = [[A('idle')]] + [[A('attack'), (lambda cv, n=n, tipx=tipx, tipy=tipy: charge(cv, tipx, tipy, m, n))] for n in (1, 2, 3)]
-        ops += [[A('attack'), (lambda cv, x=x, proj=proj: proj(cv, x))] for x in steps]
-        ops += [[A('attack'), (lambda cv, tipy=tipy: burst(cv, HIT_X + 2, tipy, m, 0))],
-                [A('attack', -1), (lambda cv, tipy=tipy: burst(cv, HIT_X + 2, tipy, m, 1))],
-                [A('idle')]]
+    def stage(ops):
+        cv = Canvas(STAGE_W)
+        shadow(cv, SX, 12)
+        for op in ops:
+            op(cv)
+        return cv.out()
 
-        def frame(ops, head=head):
-            cv = Canvas(SCENE_W)
-            shadow(cv, head, 12)
-            for op in ops:
-                op(cv)
-            return cv.out()
-        out.append([frame(o) for o in ops])
+    def pl(ps, pose, dx=0, dy=0):
+        return lambda cv: place(cv, ps, anchors, pose, dx, dy)
+
+    out = {'attack': [stage([pl(poses, 'attack')])]}
+    white, red = tinted(poses, (255, 255, 255), 0.75), tinted(poses, (255, 60, 60), 0.4)
+    out['hurt'] = [stage([pl(white, 'alert', -3)]), stage([pl(red, 'alert', -1)])]
+
+    def barrier(cv, f):
+        k = 1.0 if f == 0 else 0.6
+        if style == 'slash':  # a raised shield of light
+            for dy in range(-9, 10):
+                x = SX + 12 - (abs(dy) > 5) - (abs(dy) > 8)
+                y = H - 14 + dy
+                cv.px(x, y, fade(core, k))
+                cv.px(x - 1, y, fade(glow, k * 0.8))
+                if dy % 3 == 0:
+                    cv.px(x + 1, y, fade(deep, k))
+        elif style == 'holy':  # a dome of light
+            for t in np.linspace(np.pi, 2 * np.pi, 40):
+                cv.px(SX + round(14 * np.cos(t)), H - 1 + round(22 * np.sin(t)), fade(glow, k))
+            for t in np.linspace(np.pi * 1.1, np.pi * 1.9, 5):
+                sparkle(cv, SX + round(14 * np.cos(t)), H - 1 + round(22 * np.sin(t)), 2, fade(core, k), fade(glow, k))
+        else:  # a hexagonal magic barrier
+            for dy in range(-10, 11):
+                x = SX + 11 + (abs(dy) // 4)
+                cv.px(x, H - 14 + dy, fade(glow, k))
+                if (dy + f) % 4 == 0:
+                    cv.px(x + 1, H - 14 + dy, fade(core, k))
+            sparkle(cv, SX + 13, H - 14 - 6 + f * 6, 2, fade(core, k), fade(glow, k))
+    out['guard'] = [stage([pl(poses, 'idle', -1), (lambda cv, f=f: barrier(cv, f))]) for f in range(2)]
+
+    def dust(cv, f):
+        for k, (dx, dy) in enumerate(((-7, -1), (-10, -2), (-13, -1), (-16, -3))):
+            if (k + f) % 2 == 0:
+                cv.px(SX + dx, H - 1 + dy, (214, 204, 176, 150))
+    out['run'] = [stage([pl(poses, 'walk', 1, -1), (lambda cv: dust(cv, 0))]), stage([pl(poses, 'idle', 2), (lambda cv: dust(cv, 1))])]
+
+    def big_arc(cv, x, y, k=1.0):
+        pts = [(0, -10), (1, -9), (2, -8), (3, -7), (3, -6), (4, -5), (4, -4), (5, -3), (5, -2), (5, -1), (5, 0), (5, 1),
+               (5, 2), (5, 3), (4, 4), (4, 5), (3, 6), (3, 7), (2, 8), (1, 9), (0, 10)]
+        for dx, dy in pts:
+            cv.px(x + dx, y + dy, fade(core, k))
+            cv.px(x + dx - 1, y + dy, fade(glow, k * 0.85))
+            cv.px(x + dx - 2, y + dy, fade(deep, k * 0.8))
+    out['swing'] = [stage([pl(poses, 'attack', -2)]),
+                    stage([pl(poses, 'attack', 2), (lambda cv: big_arc(cv, TX + 7, TY))]),
+                    stage([pl(poses, 'attack', 1), (lambda cv: big_arc(cv, TX + 10, TY, 0.45))])]
+    out['jump'] = [stage([pl(poses, 'cheer', 0, -6)])]
+
+    def small(w, draw):
+        cv = Canvas(w)
+        draw(cv)
+        return cv.out()
+
+    def beam(cv, f):
+        for x in range(16):
+            cv.px(x, TY, core)
+            cv.px(x, TY - 1, core)
+            cv.px(x, TY + 1, glow)
+            cv.px(x, TY - 2, glow)
+            if (x + f) % 2 == 0:
+                cv.px(x, TY + 2, deep)
+            if (x + f) % 4 == 1:
+                cv.px(x, TY - 3, deep)
+                cv.px(x, TY + 3, fade(deep, 0.6))
+    out['beam'] = [small(16, lambda cv, f=f: beam(cv, f)) for f in range(2)]
+
+    def head(cv, f):
+        x1 = 6
+        for x in range(x1):
+            cv.px(x, TY, core)
+            cv.px(x, TY - 1, glow)
+            cv.px(x, TY + 1, glow)
+        for dy in range(-3, 4):
+            cv.px(x1, TY + dy, core if abs(dy) < 2 else glow)
+        for dy in range(-2, 3):
+            cv.px(x1 + 1, TY + dy, core if abs(dy) < 1 else glow)
+        cv.px(x1 + 2, TY, core)
+        cv.px(x1 + 2, TY - 1, glow)
+        cv.px(x1 + 3, TY, glow)
+        if f:
+            sparkle(cv, x1 - 2, TY - 4, 2, core, glow)
+    out['head'] = [small(12, lambda cv, f=f: head(cv, f)) for f in range(2)]
+    out['wave'] = [small(12, lambda cv: slash(cv, 6, TY, m)), small(12, lambda cv: slash(cv, 7, TY, m, big=False))]
+    out['orb'] = [small(12, lambda cv: holy(cv, 6, TY, m, r=2)), small(12, lambda cv: holy(cv, 6, TY, m, r=3))]
+
+    def fizzle(cv):
+        for k, (dx, dy) in enumerate(((-6, -3), (5, -5), (7, 3), (-4, 5), (0, -7))):
+            sparkle(cv, 12 + dx, TY + dy, 2 if k % 2 else 1, core, glow)
+    out['burst'] = [small(24, lambda cv: burst(cv, 12, TY, m, 0)), small(24, lambda cv: burst(cv, 12, TY, m, 1)), small(24, fizzle)]
+
+    def xslash(cv, f):
+        k = 1.0 if f == 0 else 0.45
+        for t in range(-11, 12):
+            if f == 1 and abs(t) < 3:
+                continue
+            for x, y in ((16 + t, 18 + t), (16 + t, 18 - t)):
+                cv.px(x, y, fade(core, k))
+                cv.px(x, y - 1, fade(glow, k * 0.85))
+                cv.px(x + 1, y, fade(deep, k * 0.7))
+        if f == 0:
+            sparkle(cv, 16, 18, 3, core, glow)
+    out['arc'] = [small(32, lambda cv, f=f: xslash(cv, f)) for f in range(2)]
+    assert [len(out[k]) for k, _, _ in BATTLE] == [n for _, _, n in BATTLE]
     return out
 
 
@@ -523,16 +623,20 @@ def build_one(args):
     name, spr_dir, fonts_dir, faces_dir, prev_dir = args
     poses, anchors = load(name, spr_dir)
     anims = animations(name, poses, anchors)
-    frames, order = [], []
-    for w, base in ((STAGE_W, STAGE_BASE), (SOLO_W, SOLO_BASE)):
-        for k, (ms, fl) in anims.items():
-            for i, f in enumerate(fl):
-                frames.append((w, f(w)))
-                order.append((w, k, i))
-    for s, fl in enumerate(scene_casts(name, poses, anchors)):
+    glyphs = []  # (code point, width, frame)
+    n = 0
+    for k, (ms, fl) in anims.items():
         for i, f in enumerate(fl):
-            frames.append((SCENE_W, f))
-            order.append((SCENE_W, f'cast_s{s}', i))
+            glyphs.append((STAGE_BASE + n + i, STAGE_W, f(STAGE_W)))
+            glyphs.append((SOLO_BASE + n + i, SOLO_W, f(SOLO_W)))
+        n += len(fl)
+    cp = BATTLE_BASE
+    bg = battle_glyphs(name, poses, anchors)
+    for key, w, _ in BATTLE:
+        for f in bg[key]:
+            glyphs.append((cp, w, f))
+            cp += 1
+    frames = [(w, f) for _, w, f in glyphs]
     # palette: unique RGBA across all frames
     allpx = np.concatenate([f[f[..., 3] > 0].reshape(-1, 4) for _, f in frames])
     # snap alpha to 16 steps to keep the palette small
@@ -561,15 +665,14 @@ def build_one(args):
             d.setdefault(lut[key], set()).add((int(x), int(y)))
         return d
 
-    glyph_frames = []
-    for (w, f) in frames:
-        glyph_frames.append((w, cells(f)))
     path = f'{fonts_dir}/FrierenDot{FONT_VERSION}-{name}.ttf'
-    build_font(path, FAMILY[name], glyph_frames, [tuple(int(v) for v in c) for c in pal], order)
+    build_font(path, FAMILY[name], [(cp, w, cells(f)) for cp, w, f in glyphs], [tuple(int(v) for v in c) for c in pal])
     face(poses, anchors, f'{faces_dir}/{name}.png')
     if prev_dir:
+        # every glyph as it looks, for stage_preview.py
+        np.savez_compressed(f'{prev_dir}/atlas_{name}.npz', **{f'{cp:x}': f for cp, _, f in glyphs})
         # preview strip of the stage frames (2x)
-        st = [f for (w, f) in frames if w == STAGE_W]
+        st = [f for cp, w, f in glyphs if w == STAGE_W and cp < SOLO_BASE]
         cols = 10
         rows = (len(st) + cols - 1) // cols
         pv = Image.new('RGBA', (cols * (STAGE_W + 2), rows * (H + 2)), (22, 30, 70, 255))
@@ -579,8 +682,8 @@ def build_one(args):
     return name, len(frames), len(pal)
 
 
-def build_font(path, family, glyph_frames, palette, order):
-    """like colrfont.build but with per-glyph widths and two codepoint ranges"""
+def build_font(path, family, glyph_frames, palette):
+    """like colrfont.build but with per-glyph widths: glyph_frames = [(code point, width, {palette index: cells})]"""
     from fontTools.fontBuilder import FontBuilder
     from fontTools.pens.ttGlyphPen import TTGlyphPen
     from fontTools.colorLib.builder import buildCOLR, buildCPAL
@@ -591,12 +694,7 @@ def build_font(path, family, glyph_frames, palette, order):
     metrics = {'.notdef': (STAGE_W * U, 0), 'space': (8 * U, 0)}
     cmap = {0x20: 'space'}
     layers = {}
-    counters = {STAGE_W: 0, SOLO_W: 0, SCENE_W: 0}
-    bases = {STAGE_W: STAGE_BASE, SOLO_W: SOLO_BASE, SCENE_W: SCENE_BASE}
-    for (w, cells), (w2, k, i) in zip(glyph_frames, order):
-        base_cp = bases[w]
-        cp = base_cp + counters[w]
-        counters[w] += 1
+    for cp, w, cells in glyph_frames:
         base = f'g{cp:04X}'
         names.append(base)
         cmap[cp] = base
@@ -645,7 +743,10 @@ def manifest(spr_dir):
                            'solo': [SOLO_BASE + o + i for i in range(len(fl))]}
         s += len(fl)
         o += len(fl)
-    out['scene'] = {'width': SCENE_W, 'slots': SLOTS, 'hit': HIT_X, 'cast': [[SCENE_BASE + k * 12 + i for i in range(12)] for k in range(len(SLOTS))]}
+    cp, out['battle'] = BATTLE_BASE, {}
+    for key, w, n in BATTLE:
+        out['battle'][key] = {'w': w, 'cps': list(range(cp, cp + n))}
+        cp += n
     return out
 
 

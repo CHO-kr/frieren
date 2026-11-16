@@ -2,10 +2,14 @@
 // grouped by machine when more than one is known. After a space's name, the repo its first terminal is in now, only
 // where unusual: branch, ahead/behind. Click to travel there, right-click for its menu, drag to reorder.
 // Based on journey-spaces (same places, same pins in journey-spaces/places.json), drawn in pixels.
+// With exactly one space it shows that space as one slim row and shrinks its block to fit (layout.resize on the block
+// holding it, as pixel-quest's "fit" does; fit.js); with two or more the block gets back the size it had.
+// props (optional): fit false: never resize the block; block: that block's id when a layout has two pixel-spaces blocks.
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, appHome, readTextFile } from "herdr";
+import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, appHome, readTextFile, props, checking } from "herdr";
+import { fitHeight, plan, H } from "./fit.js";
 
 // One place per space. Pin one in journey-spaces/places.json like {"space name": "camp"};
 // otherwise the name picks a fixed place (reordering spaces doesn't change it).
@@ -22,6 +26,14 @@ function find(node, id) {
   if (node?.id === id) return node;
   for (const child of node?.children ?? []) {
     const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+function findWhere(node, test) {
+  if (node && test(node)) return node;
+  for (const child of node?.children ?? []) {
+    const found = findWhere(child, test);
     if (found) return found;
   }
   return null;
@@ -86,6 +98,8 @@ export default class Spaces extends View {
     this.over = null;
     this.machines = [];
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    // fit.js's memory: the weight to give back, the px last asked for
+    try { this.fitMem = JSON.parse(localStorage.getItem("fit") ?? "{}") ?? {}; } catch { this.fitMem = {}; }
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -251,10 +265,13 @@ export default class Spaces extends View {
     return out;
   }
 
-  // The rows, under a header per machine once one isn't this computer.
-  grouped(t, collapsed) {
+  // The rows, under a header per machine once one isn't this computer: [{ el, h }] (h: its px, for fit.js).
+  // single: the only space, as one slim row.
+  grouped(t, collapsed, single) {
     const rows = this.ordered();
-    const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
+    const draw = (r) => (collapsed ? { el: this.compact(r, t), h: r.tree ? 0 : 40 }
+      : single ? { el: this.slim(r, t), h: H.slim } : { el: this.row(r, t), h: rowHeight(r) });
+    const fixed = (el, h) => ({ el, h });
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
@@ -262,7 +279,7 @@ export default class Spaces extends View {
         || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
     };
     const loadingRow = m => div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(draw);
+    if (!remote.length) return loading(null) && !rows.length ? [fixed(loadingRow(null), 28)] : rows.map(draw);
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -287,7 +304,7 @@ export default class Spaces extends View {
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.accent))
         .on_click(() => run("space.new", m ? { machine: m } : {}))
         .child(svg(ICON("plus")).size(12)).when(!collapsed, el => el.child("New space here"));
-      return [head, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : empty])];
+      return [fixed(head, 26), ...(folded ? [] : mine.length ? mine.map(draw) : [fixed(loading(m) ? loadingRow(m) : empty, 28)])];
     });
   }
 
@@ -393,6 +410,54 @@ export default class Spaces extends View {
       );
   }
 
+  // The only space: one slim row. Its place, git notes and branch line in the tooltip; uncommitted files as ±n.
+  slim({ w, g, sum }, t) {
+    const on = w.active;
+    const place = PLACES[placeOf(w.name, this.places)];
+    const notes = [
+      sum.dirty > 0 && `${sum.dirty} uncommitted ${sum.dirty === 1 ? "file" : "files"}`,
+      sum.ahead > 0 && `${sum.ahead} unpushed ${sum.ahead === 1 ? "commit" : "commits"}`,
+      sum.local > 0 && `${sum.local} ${sum.local === 1 ? "repo" : "repos"} without a remote`,
+    ].filter(Boolean);
+    const small = (el) => el.flex_none().font_family("Galmuri9").text_size(10);
+    return h_flex()
+      .id(`space-${w.id}`)
+      .h(H.slim)
+      .flex_none()
+      .px(5)
+      .gap(7)
+      .items_center()
+      .border(2)
+      .when(on, (el) => el.bg(alpha(t.accent, "14")).border_color(t.accent))
+      .when(!on, (el) => el.border_color("#00000000").hover((s) => s.bg(t.hover)))
+      .tooltip([`${w.name} · ${place}`, ...notes].join("\n"))
+      .on_click(() => run("space.select", { id: w.id }))
+      .on_mouse_down("right", () => this.menu(w))
+      .child(div().size(28).flex_none().border(1).border_color(on ? t.accent : alpha(t.border, "80")).child(image(placeFor(w.name, this.places)).size(26)))
+      .when(on, (el) => el.child(svg(ICON("cursor")).size(10).flex_none().text_color(t.accent)))
+      .child(div().flex_shrink(0).max_w(140).truncate().text_color(t.foreground).child(w.name))
+      .child(g ? this.gitTail(g, null, w.name, t) : div().flex_1())
+      .when(sum.dirty > 0, (el) => el.child(small(div()).text_color(t.ansi3).child(`±${sum.dirty}`)))
+      .when(sum.local > 0, (el) => el.child(small(div()).text_color(t.ansi1).child("no remote")));
+  }
+
+  // fit.js: the block's size by how many spaces there are. items: grouped()'s rows with their heights.
+  fit(items, count) {
+    const p = props() ?? {};
+    // nothing listed yet (a new space waits a moment for its git): no size to fit to
+    if (checking() || p.fit === false || (count === 1 && !items.length)) return;
+    const node = findWhere(layout(), typeof p.block === "string" ? (n) => n.id === p.block : (n) => n.content?.mod === "pixel-spaces");
+    const chrome = 2 * (Number(node?.border?.width) || 0);
+    const r = plan(node, count, count === 1 ? fitHeight(items.map((i) => i.h), chrome) : null, this.fitMem);
+    if (JSON.stringify(r.mem) !== JSON.stringify(this.fitMem)) {
+      this.fitMem = r.mem;
+      try { localStorage.setItem("fit", JSON.stringify(r.mem)); } catch {}
+    }
+    if (r.resize) {
+      try { run("layout.resize", r.resize); } catch {}
+    }
+  }
+
   // Folded sidebar: the space's place tile, framed in gold when it's the shown one.
   compact({ w, tree }, t) {
     if (tree) return div();
@@ -427,6 +492,9 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
+    const single = sp.length === 1;
+    const items = this.grouped(t, collapsed, single);
+    this.fit(items, sp.length);
     return v_flex().size_full().min_h(0).text_size(12)
       .child(h_flex().h(28).flex_none().pl(10).pr(6).gap(6).items_center().border_b(2).border_color(alpha(t.border, "60"))
         .when(!collapsed, el => el.child(svg(ICON("chevron-right")).size(12).text_color(t.accent)).child(div().text_color(t.accent).child("SPACES"))
@@ -434,8 +502,12 @@ export default class Spaces extends View {
         .child(div().flex_1())
         .child(div().id("space-new").size(24).flex_none().flex().items_center().justify_center().text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.accent))
           .tooltip("New space").on_click(() => run("space.new")).child(svg(ICON("plus")).size(12))))
-      .child(v_flex().flex_1().min_h(0).px(6).pt(4).pb(10).gap(2).overflow_y_scrollbar().mode("always")
-        .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
-        .children(this.grouped(t, collapsed)));
+      // One space: no scrolling, the row in the middle of whatever room the block has (its layout min may leave some).
+      .child(single
+        ? v_flex().flex_1().min_h(0).px(6).pt(H.padTop).pb(H.padBottom).gap(H.gap).justify_center().overflow_hidden()
+          .children(items.map((i) => i.el))
+        : v_flex().flex_1().min_h(0).px(6).pt(4).pb(10).gap(2).overflow_y_scrollbar().mode("always")
+          .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
+          .children(items.map((i) => i.el)));
   }
 }

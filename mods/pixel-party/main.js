@@ -5,18 +5,31 @@
 // This mod is also the one that reads the screens: it shares what it finds as shared("pixel.activity") for pixel-pane.
 // Reads: usage-gauge's usage.json, the session list caches, pane-account/who.py for agents started by hand.
 // Writes only shared("journey.party") (character picks, the same as the journey layout's) and shared("pixel.activity").
+// An agent that reports no status to Herdr (a Claude Code background job: its pane says claude, agents() lacks it) is
+// listed too, its status read from its screen (shared in pixel.activity as `status`).
+// Members who need you, work or are done get a full card, on top; the others a one-line row.
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking } from "herdr";
-import { ROSTER, character, facePath, familyOf, frames, battleLine, classify, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART, alpha, backdrop } from "./lib.js";
+import { agents, panes, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking } from "herdr";
+import { ROSTER, character, facePath, familyOf, frames, battleLine, classify, screenStatus, isAgentPane, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART, alpha, backdrop, ACTING } from "./lib.js";
 
 const HOME = appHome();
 const JOBS_FILE = `${HOME}/mods/journey-party/jobs.json`;
 const WHO = `${HOME}/mods/pane-account/who.py`;
 const DATA = () => `${home()}/AppData/Local/herdr-sessions`;
 const STATUS = { working: "Acting", blocked: "Needs help", done: "Done", idle: "Resting" };
-// While working, the card's status names the motion; the full battle line and its detail are in the card's tooltip.
-const ACTING = { think: "Thinking", cast: "Casting", read: "Reading", write: "Writing", fly: "Scouting", summon: "Summoning" };
+const ORDER = { blocked: 0, working: 1, done: 2 };
+
+// Agent panes agents() doesn't list, shaped like agents() rows
+function unreported() {
+  const known = new Set(agents().map((a) => a.address));
+  const where = new Map(spaces().flatMap((s) => (s.tabs ?? []).map((t) => [t.id, { t, s }])));
+  return panes().filter((q) => q.terminal && isAgentPane(q) && !known.has(q.terminal)).map((q) => {
+    const at = where.get(q.tab);
+    return { address: q.terminal, pane: q.pane, space: at?.s.id ?? null, space_name: at?.s.name ?? "", tab: q.tab, tab_index: at?.t.index ?? 0,
+      tab_name: at?.t.name ?? "", status: null, app: q.app, program: q.program, title: q.title, seq: 0, pinned: false, focused: q.focused, unreported: true };
+  });
+}
 const SOLO_W = ART.solo * ART.scale;
 const SPR_H = ART.height * ART.scale;
 
@@ -68,8 +81,9 @@ export default class PixelParty extends View {
   watch(cx) {
     if (this.reading) return;
     const busy = agents().filter((a) => a.status === "working");
+    const quiet = unreported();
     const known = Object.keys(this.activity);
-    if (!busy.length && !known.length) return;
+    if (!busy.length && !quiet.length && !known.length) return;
     this.reading = true;
     cx.spawn(async (cx) => {
       const next = {};
@@ -79,6 +93,14 @@ export default class PixelParty extends View {
           if (r.code === 0) next[a.address] = classify(r.stdout);
         } catch {}
         next[a.address] ??= this.activity[a.address] ?? { kind: "think", detail: null };
+      }));
+      await Promise.all(quiet.map(async (a) => {
+        try {
+          const r = await hc(["read", a.address]);
+          if (r.code !== 0) return;
+          const status = screenStatus(r.stdout);
+          next[a.address] = { ...(status === "working" ? classify(r.stdout) : { kind: "think", detail: null }), status };
+        } catch {}
       }));
       this.reading = false;
       if (JSON.stringify(next) !== JSON.stringify(this.activity)) {
@@ -181,7 +203,7 @@ export default class PixelParty extends View {
       .border_color(frame)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .on_click(() => run("agent.focus", { terminal: a.address }))
+      .on_click(() => this.go(a))
       .child(
         // the battle tile: a strip of ground under the sprite
         div().relative().flex_none().w(SOLO_W).h(SPR_H).border(0)
@@ -204,21 +226,58 @@ export default class PixelParty extends View {
       );
   }
 
+  go(a) {
+    if (a.unreported) run("pane.focus", { pane: a.pane });
+    else run("agent.focus", { terminal: a.address });
+  }
+
+  // A member who rests (or a shell): one line, its face, tab, character, status and what's left of its usage.
+  row(a, ch, now, t) {
+    const f = this.facts(a);
+    const g = gauges(f.usage, now);
+    const tip = `${ch.name} · ${ch.role}\n${[f.account, f.model].filter(Boolean).join(" · ") || battleLine(ch, a.status, null).text}${g.hp?.tip ? `\n${g.hp.tip}` : ""}`;
+    return h_flex()
+      .id(`party-${a.address}`)
+      .w_full()
+      .flex_none()
+      .h(24)
+      .px(4)
+      .gap(6)
+      .items_center()
+      .tooltip(tip)
+      .bg(a.focused ? alpha(t.accent, "14") : alpha(t.background, "33"))
+      .border(1)
+      .border_color(a.focused ? t.accent : alpha(t.border, "50"))
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click(() => this.go(a))
+      .child(image(facePath(ch)).size(18).flex_none())
+      .child(div().flex_1().min_w(0).truncate().text_color(a.status === "idle" ? t.muted : t.foreground).child(a.tab_name || a.address))
+      .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(ch.color).child(ch.name))
+      .when(g.hp?.pct != null, (el) => el.child(div().flex_none().font_family("Galmuri9").text_size(10)
+        .text_color(g.hp.pct <= 20 ? t.blocked : t.dim).child(`HP ${g.hp.pct}%`)))
+      .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(t.dim).child(STATUS[a.status] ?? "Shell"));
+  }
+
   // Folded sidebar: face and a status pip.
   compact(a, ch, t) {
     const color = t[a.status] ?? null;
     return div().id(`party-${a.address}`).relative().size(36).flex_none().border(2)
       .border_color(a.status === "blocked" ? t.blocked : a.focused ? t.accent : alpha(t.border, "80"))
-      .cursor_pointer().on_click(() => run("agent.focus", { terminal: a.address }))
+      .cursor_pointer().on_click(() => this.go(a))
       .child(image(facePath(ch)).size(32))
       .when(Boolean(color) && a.status !== "idle", (el) => el.child(div().absolute().right(0).bottom(0).size(8).bg(color).border(1).border_color(alpha(t.background, ""))));
   }
 
   render(cx) {
     const t = theme();
-    const list = agents();
     const sp = spaces();
-    setAgentOrder(list.map((a) => a.address));
+    const reported = agents();
+    // in screen order (space, tab), the unreported ones with the status their screen shows
+    const spaceAt = new Map(sp.map((s, i) => [s.id, i]));
+    const list = [...reported, ...unreported().map((a) => ({ ...a, status: this.activity[a.address]?.status ?? shared("pixel.activity")?.[a.address]?.status ?? "idle" }))]
+      .map((a, i) => [a, i]).sort(([a, i], [b, j]) => (spaceAt.get(a.space) ?? 0) - (spaceAt.get(b.space) ?? 0) || a.tab_index - b.tab_index || i - j).map(([a]) => a);
+    setAgentOrder(reported.map((a) => a.address));
     const stored = shared("journey.party") ?? {};
     const picks = settle(stored, entriesFor(sp, list), this.jobs);
     if (this.jobsLoaded && JSON.stringify(picks) !== JSON.stringify(stored)) setShared("journey.party", picks);
@@ -247,8 +306,11 @@ export default class PixelParty extends View {
         .when(blocked > 0, (el) => el.child(div().font_family("Galmuri9").text_size(10).text_color(t.blocked).child(`${blocked} need help`)))
         .when(working > 0, (el) => el.child(div().font_family("Galmuri9").text_size(10).text_color(t.working).child(`${working} acting`))))
       .child(
-        v_flex().flex_1().min_h(0).gap(6).p(6).overflow_y_scrollbar()
-          .children(list.map((a) => this.card(a, chOf(a), now, t, this.activity[a.address] ?? shared("pixel.activity")?.[a.address])))
+        v_flex().flex_1().min_h(0).gap(4).p(6).overflow_y_scrollbar()
+          .children(list.map((a, i) => [a, i]).sort(([a, i], [b, j]) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || i - j)
+            .map(([a]) => (a.status in ORDER
+              ? this.card(a, chOf(a), now, t, this.activity[a.address] ?? shared("pixel.activity")?.[a.address])
+              : this.row(a, chOf(a), now, t))))
           .when(list.length === 0, (el) => el.child(div().p(10).text_size(12).text_color(t.dim).child("No companions yet. Start an agent in a tab and it joins the party."))),
       );
   }

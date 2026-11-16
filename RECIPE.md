@@ -345,10 +345,11 @@ at the same paths if you like.
 # Frieren Pixel
 
 The same workspace drawn as a 16-bit RPG. Every agent is a pixel party member on a little stage, acting
-out the tool the agent is running. In each pane header the panes of a tab meet in one scene cut from the
-background: they fight its monster while any of them works, find a treasure when one is done, and camp
-(a meal by day, asleep by night) when all rest. Seven pixel scenes take turns as the background, one per
-hour, and the whole palette follows the scene.
+out the kind of work the agent is doing. On a battle stage above the terminals the panes of the shown tab
+meet in one scene cut from the background: while any of them works they fight a long battle in three
+waves (each kind of work its own move, normal attacks in between, and each character's own special
+move when its SP gauge fills), celebrate when one is done, and pass the time at camp when all rest. Seven pixel
+scenes take turns as the background, one per hour, and the whole palette follows the scene.
 
 ![Frieren Pixel](docs/pixel.png)
 
@@ -356,7 +357,7 @@ hour, and the whole palette follows the scene.
 
 **Files**: `layouts/frieren-pixel.json` (+ `frieren-pixel.png`), `themes/frieren-pixel.json`,
 `backgrounds/frieren-pixel-<scene>.png` (7 scenes, 512×288 art shown ×5 at 2560×1440, 64 colors), and
-five mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`. The eight tool mods
+six mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`. The eight tool mods
 are the same. The pixel mods also read `mods/journey-party/jobs.json`, `mods/journey-spaces/places.json`
 and run `mods/pane-account/who.py`, so the journey mods must be installed too.
 
@@ -367,8 +368,8 @@ and run `mods/pane-account/who.py`, so the journey mods must be installed too.
 `{font: "Galmuri9", size: 10}`, weight 1), `tabs` (`pixel-tabs`, weight 1.3), `smart-paste` (0px). Both
 are weighted, not fixed: a fixed usage width pushed the window buttons out of a non-maximized window
 (Herdr ignores `min` on weighted items and hands nothing back from a `max`, so the mods shrink instead,
-see below). `main` pane:
-header `pixel-pane`, height 72, border 2px `#efe6c8a8`, focus 2px `#ffd36a`, radius 0, gap 8. Every
+see below). Under the top bar, `stage` (`pixel-pane` props `{stage: true}`, 80px). `main` pane:
+header `pixel-pane`, height 30, border 2px `#efe6c8a8`, focus 2px `#ffd36a`, radius 0, gap 8. Every
 block has a 2px `#efe6c8` border and a 180° gradient: `#22307cf2 → #0e1546f2` for the brand row and the
 top bar, `#1c2a74f0 → #0c123ff0` for the rest (these are the night scene's; other scenes swap them).
 Root: `background` `{image: "backgrounds/frieren-pixel-night.png", fit: "cover"}`, `theme:
@@ -379,43 +380,80 @@ Root: `background` `{image: "backgrounds/frieren-pixel-night.png", fit: "cover"}
 Herdr loads a mod's `fonts/` at start. Sizes that render on the pixel grid: Galmuri9 at 10px,
 Galmuri11 at 12px, Galmuri14 at 15px.
 
-**Sprites**: each character is one COLRv0 color font, `mods/pixel-party/fonts/FrierenDot4-<id>.ttf`,
-family `FrierenDot4 <Name>`. One glyph is one animation frame, 32 art pixels tall: stage frames are 80
-wide from U+E000, card frames 36 wide from U+E400, and the header scene's casts 256 wide from U+E800. They are drawn with `text_size(64)`,
-`line_height(1)` and `.frames(list, ms)`, so one art pixel is 2×2 screen pixels. The animations
-(first stage codepoint, frames, ms per frame):
+**Sprites**: each character is one COLRv0 color font, `mods/pixel-party/fonts/FrierenDot5-<id>.ttf`,
+family `FrierenDot5 <Name>`. One glyph is one animation frame, 32 art pixels tall: stage frames are 80
+wide from U+E000 (the head at x 16), card frames 36 wide from U+E400, and the battle stage's own glyphs
+from U+EC00. They are drawn with `text_size(64)`, `line_height(1)` and `.frames(list, ms)`, so one art
+pixel is 2×2 screen pixels. The animations (first stage codepoint, frames, ms per frame):
 
 | Motion | Codepoint | Frames | ms | When |
 |---|---|---|---|---|
 | `rest` | E000 | 4 | 450 | idle |
 | `stand` | E004 | 2 | 650 | no status |
 | `think` | E006 | 4 | 170 | working, no tool on screen |
-| `cast` | E00A | 12 | 90 | Bash, PowerShell, Shell, Run, Exec, Monitor |
-| `read` | E016 | 6 | 220 | Read, Grep, Glob, Search, List, Found, Skill |
-| `write` | E01C | 8 | 150 | Edit, Write, Update, Create, NotebookEdit, apply_patch |
-| `fly` | E024 | 6 | 140 | WebSearch, WebFetch, Fetch, browsing, web.run |
-| `summon` | E02A | 8 | 130 | Agent, Task, Explore, Plan, subagents |
+| `cast` | E00A | 12 | 90 | a shell command; on cards also test, git, delete |
+| `read` | E016 | 6 | 220 | Read, Skill; on cards also search, plan, install |
+| `write` | E01C | 8 | 150 | Edit, Write, Update, Create, NotebookEdit, apply_patch; on cards also build |
+| `fly` | E024 | 6 | 140 | WebSearch, WebFetch, Fetch, browsing, web.run, curl |
+| `summon` | E02A | 8 | 130 | Agent, Task, Explore, subagents; on cards also media |
 | `alert` | E032 | 2 | 380 | blocked |
 | `victory` | E034 | 8 | 170 | done |
-| `eat` | E03C | 4 | 320 | header camp by day, idle (a speech bubble with meat or a heart) |
+| `eat` | E03C | 4 | 320 | camp by day, idle (a speech bubble with meat or a heart) |
 | `eat_l` | E040 | 4 | 320 | the same, facing left |
-| `rest_l` | E044 | 4 | 450 | header camp by night, facing left |
-| `stand_l` | E048 | 2 | 650 | header camp, a shell, facing left |
-| `alert_l` | E04A | 2 | 380 | header camp, blocked, facing left |
+| `rest_l` | E044 | 4 | 450 | camp by night, facing left |
+| `stand_l` | E048 | 2 | 650 | camp, a shell, facing left |
+| `alert_l` | E04A | 2 | 380 | camp, blocked, facing left |
 
-The header scene's casts: party slot `i` (0–3, standing at x = 22, 48, 74, 100 of 256) has 12 frames
-from U+E800 + 12·i, 90 ms each, 256 wide: the member's cast, the bolt / slash / holy light flying to
-x = 184, and a burst on frames 9–10.
+The battle glyphs (U+EC00 on, `BATTLE` in `anim.py`): poses `attack` (1), `hurt` (2, white then red),
+`guard` (2, with a shield, dome or barrier of the member's magic), `run` (2), `swing` (3, the third with
+the arc fading), `jump` (1), all 80 wide with the head at x 16; and the member's own effects at its
+attack tip's row: `beam` (16 wide, 2, one segment of Zoltraak), `head` (12, a bolt), `wave` (12, a
+slash), `orb` (12, holy light), `burst` (24, 3), `arc` (32, 2, an x-slash on the monster).
+
+`classify()` sorts the screen into 15 kinds: `think`, `cast` (a shell command not below), `test`,
+`build`, `git`, `install`, `delete`, `media`, `wait`, `fly`, `search`, `read`, `write`, `plan`,
+`summon`. Tool lines go by `RULES` (`Update Todos` → plan, `Grep`/`Glob`/`Search` → search,
+`Read`/`Skill` → read, `Monitor` → wait, …); a shell command (`⎿ $ cmd`, `Bash(cmd)`, Codex's
+`• Running cmd`) by `COMMANDS` on the command (`git`/`gh` first, then test, install, delete, media,
+build, wait, web, search, read). The cards borrow a motion for the finer kinds (`LOOKS`).
 
 A card's stage sits on `backdrops/<scene>-solo.png` (72×64) and the old 160×64 stage on
 `backdrops/<scene>-stage.png` (from `backdrop.py`, in the scene's colors), at 70% opacity when idle.
 
-**Monsters and props** (`FrierenDot4 Monsters`, `FrierenDot4 Props`, built by `build/scene_art.py`):
-eight monsters, each 12 idle frames and 12 battle frames (they flash and flinch on frames 9–10, when the
-cast lands), at 90 ms: Wyvern, Blue Slime, Will-o'-Wisp, Frost Wolf, Grumpy Stump, Mimic, Lake Serpent,
-Stone Golem. Props: a campfire, embers, a cooking pot with steam, a tent, a closed and an open chest, a
-bedroll, a signpost, a backpack, a sparkling treasure and the gold ring. The code points, widths and
-places are generated into `mods/pixel-pane/scene.js`.
+**Monsters, effects and props** (`FrierenDot5 Monsters`, `FrierenDot5 Fx`, `FrierenDot5 Props`, built
+by `build/stage_art.py`): eight monsters, 60 wide (the sprite at x 14, room to lunge and be knocked
+back), each `idle` (4, a bob or a lean), `hurt` (2: a white flash, then red and knocked back), `attack`
+(4: wind-up, lunge, hold, back) and `spawn` (2, fading in): Wyvern, Blue Slime, Will-o'-Wisp, Frost
+Wolf, Grumpy Stump, Mimic, Lake Serpent, Stone Golem. Effects: damage digits in 3×5 pixel letters with
+an outline (white damage, gold crits, red hurt, green heals; 4 rises of 2 rows, 4 px apart), words
+(`MISS`, `BLOCK`, `CRIT!`, `WEAK!`, `KO!`, `COMBO!`, `ATK UP`, `RALLY!`, `FOUND!`, `COUNTER`, `HELP!`,
+`MIMIC!`, `BOOM!`, `FORGED!`, `TACTICS`), the HP bar (11 fills), each monster's shot and hit (fire,
+goo, wisp, ice, thorn, coin, water, rock), smoke, scan reticle, rune circle, light pillar, heal motes,
+block spark, summoning circle, sparkles, and the work kinds' things: anvil (3), forged blade (2), banner
+(2), aura (3), potion (2), meteor (2), blast (3), footprints, magnifying glass (2), thought bubbles
+(`?`, `!`, `…`, a note), map scroll (3, unrolling), ground arrow (2), hourglass (3), grimoire (2),
+shooting star (3), blooming flowers (4), butterfly (2), fishing rod (4, the last a bite) and training
+dummy (2). Props: a campfire, embers, a cooking pot with steam, a tent, a closed and an open chest, a
+bedroll, a signpost, a backpack, a sparkling treasure and the gold ring. The code points, widths, the
+monsters' shapes (top, middle, mouth) and each character's attack tip are generated into
+`mods/pixel-pane/stage.js`.
+
+**Specials** (`FrierenDot5 Special`, `build/special_art.py`, imported by `stage_art.py`; its code points
+are `STAGE.sp` in `stage.js`): per character a vertical magic circle (16 wide, 3 frames) and a big
+impact (48, 3) in its own colors, plus the art its move needs: Zoltraak's thick beam (16, 2, tiled),
+light spears (10, 4), fire pillars (56, 4), a whirlwind (40, 4), ice spikes (16, 3), a wave (48, 3) and
+its splash, chains (48, 3), lightning (24, 3), a storm of cuts (48, 4), a great slash (40, 3), erupting
+rocks (20, 3), a flash line (64, 2), an x-cut (40, 3), a pillar of judgment (40, 4) and a sanctuary
+circle (64, 3). Shared: the dim (64 wide, a dark and a white flash frame, rows 4 down, and `shadeTop` for
+the strip above), the SP gauge (14 wide: 5 levels and a white blink), a shockwave (64, 3), and banners:
+5×7 letters on a ribbon (rows 1–11, text 3–9, a glint frame) for `WAVE 1`, `WAVE 2`, `BOSS`, `RAGE!`,
+`VICTORY!`, `SPECIAL` and every move's name. The moves (`SPECIAL` in `special_art.py`, `STAGE.sp.moves`):
+Frieren Zoltraak (beam), Fern Zoltraak Barrage (barrage), Serie Rain of Light (rain), Flamme Hellfire
+(inferno), Denken Tempest (tornado), Lawine Ice Lances (ice), Kanne Tidal Wave (tide), Methode Binding
+Chains (chains), Wirbel Thunderbolt (thunder), Land Mirror Army (mirror), Ubel Severing Cut (cuts), Stark
+Sky Splitter (skysplit), Eisen Earthshaker (quake), Himmel Hero's Flash (flash), Heiter Holy Judgment
+(judgment), Sein Sanctuary (sanctuary). Glyph advances equal glyph widths, so a beam or the dim is one
+box holding a row of the same glyph.
 `mods/pixel-party/build/` rebuilds the fonts from the cut sprites in `build/spr/<id>.npz`
 (`python anim.py <spr> <fonts> <faces> <manifest.json>`). Each glyph's `hmtx` left side bearing must
 equal its `xMin`, or Windows shifts each color layer on its own and the sprite gets holes. Herdr keeps a
@@ -426,42 +464,101 @@ loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` a
   1.5s it runs `hc read <terminal>` for each agent and `classify()` (in `lib.js`) turns the last tool line
   into `{kind, detail}`. It understands Claude Code's `● Tool(args)`, collapsed groups (`Reading 1 file…`;
   a finished group like `Read 1 file, ran 2 shell commands` means thinking again), `⎿ $ cmd`, and Codex's
-  `•` lines. It shares `pixel.activity` (`{terminal: {kind, detail}}`). A card (padding 4, about 76px,
-  no taller than its stage): the member on the 36×32 stage, then two lines above the bars. Line 1: tab or
-  session title and status (Resting / Needs help / Done, or while working the motion: Thinking, Casting,
-  Reading, Writing, Scouting, Summoning). Line 2: the member's name in their color, `account · model` (a
-  shell shows its battle line) and a `Claude`/`Codex` tag. Then HP and MP bars. The card's tooltip has
-  the full battle line. Header: `PARTY N members`, `N acting`, `N need help`.
-- `pixel-pane` (`main.js`, `lib.js`, `plan.js`, `scene.js`): the 72px pane header.
-  - **The scene**, 514px wide (it shrinks first in a narrow pane): `mods/pixel-party/scenes/<scene>.png`,
-    a 256×32 strip of the background (every other pixel of its art, so it matches the sprites' pixel size)
-    drawn at 2×, then everything from `plan()` as absolutely
-    placed glyphs. The party is one member per pane of the same tab (`panes()`), up to 4, this pane's
-    member always in. `plan(members, scene, night)` in `plan.js` (pure, no Herdr calls) decides:
-    - **battle** while any member is `working`: the scene's monster at x = 182 (`golem` for 3+ members),
-      in its battle frames while someone casts. Members stand at the slots, a casting member draws its
-      256-wide cast glyphs, the others their motion (a resting one `stand`).
-    - **victory** when one is `done` and none works: a treasure chest where the monster stood.
-    - **camp** otherwise: signpost, backpack, tent, and in the middle (x = 121) the cooking pot by day,
-      embers and a bedroll by night (`isNight`: 22:00–07:00). Members sit around it, the second and fourth
-      facing left (`*_l`): `eat` by day, `rest` by night, `alert` if blocked, `stand` for a shell.
-    - With more than one member, the gold ring under this pane's member.
+  `•` lines. It shares `pixel.activity` (`{terminal: {kind, detail, count?, status?}}`; `count`: the
+  subagents a group line names). An agent pane `agents()` doesn't list (its `app` says claude or codex but
+  it reports no status, e.g. a Claude Code background job) is read too, and `screenStatus()` gives it a
+  status from the screen: a permission question → blocked, `esc to interrupt` or the spinner → working,
+  else idle; it joins the list like the rest (click: `pane.focus`). Members that are blocked, working or
+  done come first as cards (padding 4, about 76px, no taller than its stage): the member on the 36×32
+  stage, then two lines above the bars. Line 1: tab or session title and status (Needs help / Done, or
+  while working the kind: Thinking, Casting, Testing, Forging, Rallying, Supplying, Burning, Tracking,
+  Reading, Writing, Planning, Guarding, Scouting, Conjuring, Summoning). Line 2: the member's name in
+  their color, `account · model` (a shell shows its battle line) and a `Claude`/`Codex` tag. Then HP and
+  MP bars. The rest are 24px rows: face, tab, character, `HP N%`, status. Header: `PARTY N members`,
+  `N acting`, `N need help`.
+- `pixel-pane` (`main.js`, `lib.js`, `plan.js`, `stage.js`): two views.
+  - **The stage block** (props `{stage: true}`): the shown tab (`focused().tab`). Its party is
+    `partyFor()` (in `lib.js`): one member per terminal pane, up to 4 (the focused one always in), each a
+    different character: a pane whose pick another pane already has gets one nobody in the tab has (by a
+    hash of its pane id). The strip is `W` art pixels wide, `W` = (window width − padding − sidebar −
+    gap − border − 300 for the log) / 2, between 200 and 512 (checked every 2 s), cut from
+    `mods/pixel-party/scenes/<scene>.png` (512×36 at 2×) around the scene's anchor. Everything from
+    `plan(members, scene, night, W, pick)` is an absolutely placed glyph box. Beside it the log: the title
+    per step (`BATTLE · Wave 1/3 · vs <foe>`, `BATTLE · Boss · vs Stone Golem`, `VICTORY · …`, or `CAMP ·
+    day` / `VICTORY`) with the tab and party, the newest log line, the one before (all three `.frames` on
+    the same clock as the stage), and who does what. Each working member's `kinds` are the kinds of work
+    its agent showed in the last `KIND_MS` (5 min), in the order first seen, at most 4, `think` only when
+    there is nothing else. A new party, status, focus, width, scene or 20-minute slot plans again at once;
+    new kinds alone wait `REPLAN_MS` (60 s) so a playing battle isn't cut off. Planning a long battle is
+    slow in Herdr's script engine (QuickJS: a four-member plan ~13 ms, building its ~215 boxes ~21 ms) and
+    a call that runs too long is cut off ("This view could not be re-rendered … interrupted"), so render
+    only records what it wants planned and keeps drawing the last plan; a 150 ms timer plans and notifies.
+  - **`plan.js`** (pure, no Herdr calls; `build/stage_dump.mjs` runs it in node): **battle** while any
+    member works. A timeline of 90 ms steps (one loop 40–60 s) in three waves: the scene's monster (`WAVE
+    1` banner), another monster (`WAVE 2`), then the Stone Golem (`BOSS`). A wave has max(5, 2 × working)
+    turns, the boss max(7, 3 × working); at half the boss's turns `RAGE!` and from then on it strikes
+    twice. Working members take turns in order; each member's turns go through `rotation(kinds)`: every
+    kind but `think`/`cast` followed by a normal attack. **Normal attacks** cycle four per role: fighters
+    (Stark, Eisen, Himmel) a swing, two swings, a leaping strike with a shockwave, a dash; mages a bolt, two
+    bolts, a bolt charged in their own magic circle, Zoltraak (a growing beam); priests a holy orb, holy
+    rain that heals everyone, two orbs, a charged orb. **SP**: every turn adds 1 to the member's gauge
+    (drawn over its head, blinking when full); at 4, or on a wave's last turn with 2 or more (the boss's
+    last turn always), the turn is the member's **special**: the strip and the band above it dim (white on
+    its big hits), the move's banner sits at the top for 14 steps with a glint, the move plays and its
+    finishing hit does 120–260 (gold numbers). After every two turns the monster strikes back, cycling a
+    shot at one member, a charge across the stage at the front one, and a blast at everyone: warriors
+    and priests block, mages dodge or are hurt, a hurt member is healed by a priest. The last turn knocks
+    it out (smoke, `KO!`, the party cheers, summoned allies vanish), the HP bar of each wave drains hit by
+    hit; after the boss `VICTORY!` and a treasure chest. Each turn by kind:
+    think → an attack, a `…` pause then an attack, or an aura then a crit; cast → a normal attack;
+    test → four quick swings or a five-shot volley, `COMBO!`; build → anvil and hammer, `FORGED!`, the blade
+    flies and falls (a crit); git → banner, `RALLY!`, auras, everyone charges a step apart; install →
+    potion, aura, `ATK UP`, a crit; delete → three meteors and blasts, `BOOM!`; read → scan reticle,
+    `WEAK!`, a crit; search → a `?`, the lens sweeps to the monster leaving footprints, `FOUND!`, a crit;
+    write → rune circle and pillar (a crit); plan → map, arrows, `TACTICS` (the next strike crits; alone, it
+    strikes itself); wait → hourglass, guard, the monster's strike is blocked, `COUNTER`; fly → a dive;
+    media → two flickering illusions, three shots; summon → circles, allies (characters not in the tab,
+    one per subagent, up to two) appear and attack. Blocked members call `HELP!` every 26 steps. Numbers
+    rise from under the HP bar. Moving is done with a box at each spot, blank on the other steps, all
+    `.frames(list, 90)` of the same length, so they stay in step; `boxes()` walks only the steps an effect
+    was set (an actor with an ambient pose step by step), and numbers share one width so they share boxes
+    (a four-member battle ~200–350 boxes). The plan also returns `turns` ([step, character, kind or
+    "special"]) for previews. **victory** when one
+    is done: a treasure chest, a grimoire over it, or the mimic (by `pick`). **camp** otherwise, by
+    `pick` (the tab's hash + the 20-minute slot): a meal by the fire, a field of flowers with butterflies,
+    straw-dummy training, grimoires, or fishing (lakeside, snow and meadow scenes); 22:00–07:00 asleep by
+    the embers or a watch under shooting stars. With more than one member, the gold ring under the
+    focused pane's member.
     The scene's monster: night → Wyvern, dawn-flowers → Blue Slime, meteor-night → Will-o'-Wisp,
     snow-north → Frost Wolf, autumn-road → Grumpy Stump, mage-library → Mimic, lakeside-town → Lake
-    Serpent. The tooltip names the party and the foe.
-  - The battle line (`Frieren casts a spell! · vs Wyvern`, `The party shares a meal by the campfire`,
-    `The party sleeps by the campfire… Zzz`, `Quest complete! Treasure found`) with the tool's detail,
-    the folder, `account · model · weekly N%`, `Needs you` / `Done` chips, and Split right / Split down /
-    Zoom / Close buttons on hover.
-- `pixel-tabs` (`main.js`, `lib.js`): tabs as inventory slots with the member's 36px pixel face and
-  status, then the + menu, Files / Changes buttons and the window buttons. The Files / Changes buttons
-  shrink to their icons (min 38px, label truncated, tooltip) before anything pushes the window buttons out.
-- `usage-gauge`: the chips sit in a row that shrinks and scrolls sideways (`min_w(0)`,
-  `overflow_x_scrollbar`); the Results button keeps its size.
-- `pixel-spaces` (`main.js`, `art/<place>.png`, 32×32 art at 64px): `SPACES · DESTINATIONS`. Each
-  space is a place (Royal Capital, Old Ruins, Flower Hill, Forest Camp, Rampart Watchtower, Town Street,
-  Starlit Old Tree, Moonlit Castle) with branch and ahead/behind. When the sidebar is folded it draws a
-  36px tile per space, gold-framed when active, with a status pip.
+    Serpent.
+  - **The pane header**, one 30px row: a cursor when focused, the character's color square and name, the
+    program, the battle line with the tool's detail, the folder, `account · model · weekly N%`,
+    `Needs you` / `Done` chips, and Split right / Split down / Zoom / Close buttons on hover.
+- `pixel-tabs` (`main.js`, `lib.js`, `names.js` + `names.test.mjs`): tabs as inventory slots with the
+  member's 36px pixel face and status, then the + menu (`openOverlay({mod: "pixel-new-menu", kind:
+  "popup", width: 250, height: 560})`), Files / Changes buttons and the window buttons. The Files /
+  Changes buttons shrink to their icons (min 38px, label truncated, tooltip) before anything pushes the
+  window buttons out. A tab nobody named (`named` false) shows `<number> · <name>`: the title of the
+  session its agent resumed (the resume id in its launch argv, looked up in the session panels'
+  caches), else its first pane's repo root name, else its
+  folder (`~` for home), else its program; the tooltip says which. Left of the face a 4×30px bar in its
+  project's color (a hash of the repo root or folder into eight colors mixed from the theme's palette).
+- `usage-gauge` (+ `roomiest.js`, `roomiest.test.mjs`): the chips sit in a row that shrinks and scrolls
+  sideways (`min_w(0)`, `overflow_x_scrollbar`); the Results button keeps its size. Per agent the
+  account with the lowest shown use (Claude: weekly; Codex: its fullest window; ties by the other
+  windows) among fresh, logged-in readings gets a ★ before its name, and is shared as
+  `usage.roomiest` (`{claude: {name, used}, codex: …}`).
+- `pixel-new-menu` (`main.js`, `accounts.js` + `accounts.test.mjs`): Herdr's new-menu with one row per
+  account for Claude Code and Codex (the accounts the session panels share as `sessions.claude` /
+  `sessions.codex`, each started by its own command such as `claude2`; on another machine one row per
+  agent), the `usage.roomiest` one first with a `most left` note, then the other agents.
+- `pixel-spaces` (`main.js`, `fit.js` + `fit.test.mjs`, `art/<place>.png`, 32×32 art at 64px): `SPACES ·
+  DESTINATIONS`. Each space is a place (Royal Capital, Old Ruins, Flower Hill, Forest Camp, Rampart
+  Watchtower, Town Street, Starlit Old Tree, Moonlit Castle) with branch and ahead/behind. With one space
+  the block resizes itself (`layout.resize`) to its header and one slim row (the layout's `min` 76), and
+  with two or more back to the weight it had. When the sidebar is folded it draws a 36px tile per space,
+  gold-framed when active, with a status pip.
 - `pixel-chrome` (`main.js`, `icons/` 8×8 pixel SVGs, `fonts/`): the brand row (Frieren's face,
   `HERDR`, `Journey · Day N`, search, fold) and the footer (Settings, Add machine). The day counts from
   the earlier of its own start and `data/journey-chrome/store.json`, so both layouts agree. Folding saves
@@ -478,7 +575,7 @@ shown layout's file and, only if its `"image"` is one of `backgrounds/frieren-pi
 back painted in the scene with `writeTextFile`: the image path, the root `"colors"` line (replaced, or
 added after `"theme"`), and every block frame and gradient color swapped role by role from whichever
 scene's colors the file has now (a color that is no scene's is left alone). Then it shares the scene id
-as `pixel.scene`, which pixel-party (card stages) and pixel-pane (header strip and monster) read. Herdr
+as `pixel.scene`, which pixel-party (card stages) and pixel-pane (stage strip and monster) read. Herdr
 has no command for a layout's background or colors, and a layout-file edit is applied live. The footer
 copy doesn't rotate.
 
@@ -492,18 +589,24 @@ over the background. The mods take colors from `theme()` and derive the rest wit
 
 ## Done when (Frieren Pixel)
 
-- `herdr-app check` passes for the five `pixel-*` folders, and `layout.switch {name: "frieren-pixel"}`
+- `herdr-app check` passes for the six `pixel-*` folders, `node --test` passes for `names.test.mjs`,
+  `roomiest.test.mjs`, `fit.test.mjs` and `accounts.test.mjs`, and `layout.switch {name: "frieren-pixel"}`
   shows the pixel scene through 55%-opaque terminals, Galmuri text everywhere, and 2px cream frames.
-- An agent running `npm test` shows its member casting on the card and in the pane header, with
-  `… casts a spell!  npm test`. Reading a file switches to the grimoire within about 2 seconds, and a
-  finished turn shows the flower field.
-- A blocked agent's member shows the `!` bubble and the card says `Needs help`.
-- The pane header shows the scene's strip. A working agent's member casts at the scene's monster, the
-  cast reaches it and it flinches. Split the tab and both members stand in both headers, the ring under
-  this pane's one; with three or more panes the golem appears. All idle: camp with a meal (by day) or
-  asleep by the embers (22:00–07:00). Done: a treasure chest.
+- An agent running `npm test` shows `Testing` on its card and `… unleashes a combo!  npm test` in the
+  pane header, and on the stage its member lands a combo. Reading a file switches to the grimoire within
+  about 2 seconds, and a finished turn shows the flower field.
+- A blocked agent's member shows the `!` bubble, calls `HELP!` on the stage, and the card says
+  `Needs help`.
+- The stage shows the shown tab's party on the scene's strip. A working agent's member fights three
+  waves (`WAVE 1`, `WAVE 2`, `BOSS`, then `VICTORY!`): its turns follow what its agent did lately, with
+  normal attacks in between, its SP gauge fills, and a full gauge plays its special (the stage dims, the
+  move's banner, a white flash on the big hit). Numbers rise and each wave's HP bar drains, the monster
+  shoots, charges or blasts everyone, the boss rages at half way. Split the tab and the second pane's
+  member joins as a different character, the ring under the focused one. A tab with four panes still
+  renders (no "could not be re-rendered" banner). All idle: a camp pastime. Done: a victory scene.
+- `node build/stage_dump.mjs mods/pixel-pane cases.json` and `stage_preview.py` draw every case as a GIF.
 - On the hour the background moves to the next scene by itself, and clicking `Journey · Day N` moves
-  it on at once. The frames, gradients, accent, terminal tint, card stages and header strip change
+  it on at once. The frames, gradients, accent, terminal tint, card stages and stage strip change
   with it, and seven moves bring back the starting scene with the file as it was.
 - In a window about 800px wide the tabs and the minimize / maximize / close buttons are still visible.
 - The fold button leaves a 64px rail of place tiles. Unfolding brings back the old width and the session

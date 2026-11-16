@@ -3,10 +3,15 @@
 // Hovering tells every window and when it resets, a click reads again. usage.py reads, every 5 minutes.
 // Props (optional): { "font": "Galmuri9", "size": 10 } sets the chips' font and size; a wide pixel font
 // otherwise runs the name into the percent ("claude2" + "29%"), as in frieren-pixel.
+// The Claude account and the Codex account with the most left (fresh numbers only, roomiest.js) get a ★ and an accent
+// edge, and are shared as "usage.roomiest" ({ claude, codex }: { name, used } | null) for the + menu (pixel-new-menu).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout, props } from "herdr";
+import { roomiest, isRoomiest, MOST_LEFT_TIP } from "./roomiest.js";
+
+const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -118,8 +123,12 @@ export default class UsageGauge extends View {
     const level = (used) => (used >= 90 ? t.blocked : used >= 70 ? t.working : t.done);
     const bar = (w, span) => div().w_full().h(3).rounded(2).bg(t.raised)
       .child(div().h_full().rounded(2).w(Math.max(2, Math.round(span * Math.min(100, w.used ?? 0) / 100))).bg(w.used == null ? t.dim : level(w.used)));
+    const accounts = this.data?.accounts ?? [];
+    const best = roomiest(accounts, now);
+    if (JSON.stringify(shared("usage.roomiest") ?? null) !== JSON.stringify(best)) setShared("usage.roomiest", best);
 
     const chip = (a) => {
+      const most = isRoomiest(best, a);
       // A failed read keeps the last numbers, but a window that has reset since then no longer
       // has that use: it shows as unknown (empty bar), not the old percent (codex4 showed 98%
       // for a 5-hour window that had reset hours before, 2026-11-04).
@@ -131,6 +140,7 @@ export default class UsageGauge extends View {
       const known = windows.filter((w) => w.used != null);
       const top = known.reduce((m, w) => Math.max(m, w.used), 0);
       const tip = [
+        most ? `★ ${MOST_LEFT_TIP}` : null,
         `${a.name}${a.login || a.email ? ` · ${a.login || a.email}` : ""}${a.plan ? ` (${a.plan})` : ""}`,
         a.warning ? `⚠ ${a.warning}` : null,
         a.credits ? `Credits: ${a.credits.unlimited ? "unlimited" : a.credits.balance != null ? Math.round(a.credits.balance).toLocaleString() : "none"}` : null,
@@ -145,7 +155,8 @@ export default class UsageGauge extends View {
       ].filter(Boolean).join("\n");
       // A Codex chip also says, beside its bar, its credits left and free reset passes ("43.0k ↺2").
       const money = a.credits ? `${a.credits.unlimited ? "∞" : compact(a.credits.balance)}${a.resets?.count ? ` ↺${a.resets.count}` : ""}` : null;
-      const width = money ? 104 : 78;
+      // The ★ takes its own room, so the name isn't cut short ("clau…").
+      const width = (money ? 104 : 78) + (most ? 12 : 0);
       return v_flex()
         .id(`ug-${a.agent}-${a.name}`)
         .w(width)
@@ -154,6 +165,7 @@ export default class UsageGauge extends View {
         .gap(3)
         .justify_center()
         .rounded(6)
+        .when(most, (el) => el.border(1).border_color(alpha(t.accent, "a0")).bg(alpha(t.accent, "14")))
         .cursor_pointer()
         .hover((el) => el.bg(t.hover))
         // A press here is a click, not a window drag.
@@ -169,17 +181,18 @@ export default class UsageGauge extends View {
           .gap(4)
           .when(Boolean(props()?.font), (el) => el.font_family(props().font))
           .text_size(props()?.size ?? 10.5)
-          .child(div().truncate().text_color(a.warning ? t.working : a.stale ? t.dim : t.muted).child(a.warning ? `${a.name}!` : a.name))
+          .child(h_flex().min_w(0).gap(2).items_center()
+            .when(most, (el) => el.child(div().id(`ug-most-${a.agent}-${a.name}`).flex_none().text_color(t.accent).tooltip(MOST_LEFT_TIP).child("★")))
+            .child(div().min_w(0).truncate().text_color(a.warning ? t.working : a.stale ? t.dim : t.muted).child(a.warning ? `${a.name}!` : a.name)))
           .child(a.login_needed
             ? div().font_medium().text_color(t.working).child("login")
             : div().font_medium().text_color(known.length ? (a.stale ? t.dim : level(top)) : t.dim).child(known.length ? `${top}%` : a.retry_at ? "wait" : "—")))
-        .when(!money, (el) => el.children(windows.slice(0, 2).map((w) => bar(w, width - 12))))
+        .when(!money, (el) => el.children(windows.slice(0, 2).map((w) => bar(w, width - 12 - (most ? 2 : 0)))))
         .when(Boolean(money), (el) => el.child(h_flex().gap(5).items_center()
           .child(div().flex_1().min_w(0).children(windows.slice(0, 1).map((w) => bar(w, 44))))
           .child(div().flex_none().when(Boolean(props()?.font), (el) => el.font_family(props().font)).text_size(props()?.size ?? 9.5).text_color(a.stale ? t.dim : t.muted).child(money))));
     };
 
-    const accounts = this.data?.accounts ?? [];
     // No "Claude"/"Codex" heading: the chip names (claude2, codex3) already say which (user request 2026-11-02).
     const group = (agent) => {
       const mine = accounts.filter((a) => a.agent === agent);

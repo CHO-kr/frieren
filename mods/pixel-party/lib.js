@@ -25,7 +25,7 @@ export const character = (id) => BY_ID.get(id) ?? null;
 export const facePath = (c) => (c ? `mods/pixel-party/faces/${c.id}.png` : null);
 // Each character's animations live in its own color pixel font (mods/pixel-party/fonts/FrierenDot<v>-<id>.ttf).
 // The version is in the family name: Herdr keeps a loaded family in memory, so a rebuilt font needs a new name.
-export const FONT_VERSION = 4;
+export const FONT_VERSION = 5;
 export const familyOf = (c) => `FrierenDot${FONT_VERSION} ${c.name}`;
 
 // Sprite animations: one glyph per frame. Stage glyphs are 80x32 art pixels (the session header), solo glyphs 36x32
@@ -48,9 +48,11 @@ const ANIMS = {
   stand_l: [0xe048, 2, 650],
   alert_l: [0xe04a, 2, 380],
 };
+// The finer kinds of work (classify below) borrow a sprite motion for the cards; the battle stage gives each its own scene.
+const LOOKS = { test: "cast", build: "write", git: "cast", install: "read", delete: "cast", search: "read", plan: "read", wait: "stand", media: "summon" };
 export const ART = { height: 32, stage: 80, solo: 36, scale: 2 };
 export function frames(anim, solo) {
-  const [base, n, ms] = ANIMS[anim] ?? ANIMS.stand;
+  const [base, n, ms] = ANIMS[anim] ?? ANIMS[LOOKS[anim]] ?? ANIMS.stand;
   const first = base + (solo ? 0x400 : 0);
   return { list: Array.from({ length: n }, (_, i) => String.fromCodePoint(first + i)), ms };
 }
@@ -93,9 +95,22 @@ export function battleLine(ch, status, activity) {
     write: `${who} carves runes`,
     fly: `${who} scouts with flight magic`,
     summon: `${who} summons an ally!`,
+    test: `${who} unleashes a combo!`,
+    build: `${who} forges at the anvil`,
+    git: `${who} raises the banner`,
+    install: `${who} restocks supplies`,
+    delete: `${who} calls a firestorm!`,
+    search: `${who} tracks the trail`,
+    plan: `${who} studies the map`,
+    wait: `${who} stands guard`,
+    media: `${who} conjures an illusion`,
   };
   return { anim, text: lines[anim] ?? lines.stand, detail: anim === "think" || anim === "rest" || anim === "stand" ? null : activity?.detail ?? null };
 }
+// What the card says while it works
+export const ACTING = { think: "Thinking", cast: "Casting", read: "Reading", write: "Writing", fly: "Scouting", summon: "Summoning",
+  test: "Testing", build: "Forging", git: "Rallying", install: "Supplying", delete: "Burning", search: "Tracking", plan: "Planning",
+  wait: "Guarding", media: "Conjuring" };
 
 // ----- reading what an agent is doing from its screen (`hc read <terminal>`) -----
 // Claude Code shows each tool as a top-level line (indent ≤ 2) whose ● blinks while it runs, so it may be missing:
@@ -110,14 +125,36 @@ const SKIP = /esc to interrupt|⏵⏵|shift\+tab|^\s*[│╭╰─┌└]|^\s*[�
 const SPINNER = /^\s*[^\w\s●⏺•⎿]\s+\S+…/; // "✶ Working… (31m · ↓ 23k tokens)"
 const TOP = /^(\s{0,2})([●⏺•]\s+)?(\S.*)$/;
 const RULES = [
-  ["summon", /^(?:Agent|Task|Explore|Plan|Spawn(?:ed|ing)?|Launch(?:ed|ing)? \S+ agents?)\b|sub-?agent/i],
+  ["summon", /^(?:Agent|Task|Explore|Spawn(?:ed|ing)?|Launch(?:ed|ing)? \S+ agents?)\b|sub-?agent/i],
+  ["plan", /^(?:Plan|Update(?:d)? Todos|TodoWrite|Todos?|Updat(?:e|ed|ing) (?:the )?plan|Planning)\b/i],
   ["fly", /^(?:Web ?Search(?:ed|ing)?|Web ?Fetch|Fetch(?:ed|ing)?|Search(?:ed|ing)? the web|Brows(?:e|ed|ing)|web\.run)\b/i],
   ["write", /^(?:Update[d]?|Updating|Edit(?:ed|ing)?|MultiEdit|Write|Wrote|Writing|Creat(?:e|ed|ing)|NotebookEdit|Added|Deleted|Patch(?:ed|ing)?|Made \d+ \S*\s*edits?)\b|apply_patch/i],
-  ["read", /^(?:Read(?:ing)?|Search(?:ed|ing)?|Grep|Glob|List(?:ed|ing)?|Explor(?:e|ed|ing)|Found|Skill|Look(?:ed|ing) at|Scann(?:ed|ing))\b/i],
-  ["cast", /^(?:Bash|PowerShell|Shell|Run(?:ning)?|Ran|Exec(?:ut(?:ed|ing))?|Monitor)\b/i],
+  ["search", /^(?:Search(?:ed|ing)?|Grep|Glob|List(?:ed|ing)?|Explor(?:e|ed|ing)|Found|Scann(?:ed|ing))\b/i],
+  ["read", /^(?:Read(?:ing)?|Skill|Look(?:ed|ing) at|View(?:ed|ing)?)\b/i],
+  ["wait", /^(?:Monitor|Wait(?:ed|ing)?|Sleep(?:ing)?|BashOutput|Polling)\b/i],
+  ["cast", /^(?:Bash|PowerShell|Shell|Run(?:ning)?|Ran|Exec(?:ut(?:ed|ing))?)\b/i],
 ];
+// A shell command, by what it does
+const COMMANDS = [
+  ["test", /\b(?:test|tests|pytest|jest|vitest|mocha|spec|lint|eslint|ruff|mypy|tsc --noEmit|check)\b/i],
+  ["git", /^(?:git|gh)\b/i],
+  ["install", /\b(?:install|i|add|upgrade|update)\b.*|^(?:pip|pipx|uv|npm|pnpm|yarn|winget|choco|scoop|cargo add)\b.*\b(?:install|add|i|upgrade)\b/i],
+  ["delete", /^(?:rm|del|rmdir|rd|Remove-Item|unlink|shred)\b|\b(?:clean|prune|purge|uninstall)\b/i],
+  ["media", /\b(?:gen_image|image|img|tts|speech|voice|video|grok|dall-?e|imagine|katana|fish)\w*/i],
+  ["build", /\b(?:build|compile|make|cmake|bundle|webpack|vite|rollup|esbuild|tsc|cargo|gradle|msbuild|dotnet|render|ffmpeg|encode|export|pack)\w*/i],
+  ["wait", /^(?:sleep|Start-Sleep|timeout|wait|Wait-Job|Get-Content .* -Wait|tail -f)\b/i],
+  ["fly", /^(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|http|ssh|scp|ping)\b/i],
+  ["search", /^(?:grep|rg|find|fd|Select-String|Get-ChildItem|ls|dir|gci|where|which|tree)\b/i],
+  ["read", /^(?:cat|type|Get-Content|gc|head|tail|less|more|bat)\b/i],
+];
+const commandKind = (cmd) => {
+  const c = String(cmd ?? "").trim().replace(/^(?:\$\s*|cd [^;&]+(?:&&|;)\s*)/, "");
+  if (/^git\b/i.test(c) || /^gh\b/i.test(c)) return "git";
+  return COMMANDS.find(([, re]) => re.test(c))?.[0] ?? "cast";
+};
 const clean = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\(ctrl\+o to expand\)/g, "").replace(/\s+/g, " ").trim();
 const kindOf = (text) => RULES.find(([, re]) => re.test(text))?.[0] ?? null;
+const refine = (kind, cmd) => (kind === "cast" ? commandKind(cmd) : kind);
 export function classify(screen) {
   const lines = String(screen ?? "").split(/\r?\n/).slice(-80);
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -131,25 +168,60 @@ export function classify(screen) {
     if (/^(?:Working|Thinking)\b.*\(/.test(head)) continue; // a Codex spinner
     // a shell command running under this line
     const cmd = lines.slice(i + 1, i + 4).map(clean).map((l) => l.match(/^⎿\s*\$\s*(.+)$/)).find(Boolean);
-    if (cmd) return { kind: "cast", detail: cut(/^\w[\w ]*\(.*\)$/.test(head) ? cmd[1] : head) };
+    if (cmd) return { kind: commandKind(cmd[1]), detail: cut(/^\w[\w ]*\(.*\)$/.test(head) ? cmd[1] : head) };
     // a tool call: Name(args)
     const call = head.match(/^(\w[\w ]*?)\s*\((.*)\)$/);
-    if (call && kindOf(call[1])) return { kind: kindOf(call[1]), detail: cut(call[2]) };
+    if (call && kindOf(call[1])) return { kind: refine(kindOf(call[1]), call[2]), detail: cut(call[2]) };
     // a group of tools: the last part is what runs now; finished groups (no "…") mean it's thinking again
     if (/…$/.test(head)) {
       const part = head.replace(/…$/, "").split(/,\s*/).pop();
       const k = kindOf(part);
-      if (k) return { kind: k, detail: cut(head) };
+      if (k) return { kind: k, detail: cut(head), count: Number(head.match(/(\d+)\s+(?:\S+\s+)?agents?/i)?.[1]) || undefined };
     }
     if (!bullet) {
       if (/^(?:Read|Searched|Ran|Listed|Found|Fetched|Wrote|Edited|Made|Updated|Created)\b.*\d/.test(head)) return { kind: "think", detail: null };
       continue; // a wrapped line of prose, or a blinking ● — keep looking up
     }
     const k = kindOf(head); // Codex: "• Running npm test", "• Explored"
-    return k ? { kind: k, detail: cut(head.replace(RULES.find(([n]) => n === k)[1], "").replace(/^[\s:·-]+/, "") || head) } : { kind: "think", detail: null };
+    if (!k) return { kind: "think", detail: null };
+    const rest = head.replace(RULES.find(([n]) => n === k)[1], "").replace(/^[\s:·-]+/, "");
+    return { kind: refine(k, rest), detail: cut(rest || head) };
   }
   return { kind: "think", detail: null };
 }
+// What an agent's screen says about it, for an agent that reports no status to Herdr (a Claude Code background job):
+// a permission question is "blocked", the spinner or "esc to interrupt" is "working", else "idle".
+export function screenStatus(screen) {
+  const lines = String(screen ?? "").split(/\r?\n/).slice(-30);
+  const tail = lines.join("\n");
+  if (/Do you want to (?:proceed|make this edit|create|allow|run)|Allow (?:once|always)|❯\s*1\.\s*Yes\b/i.test(tail)) return "blocked";
+  if (/esc to interrupt/i.test(tail) || lines.some((l) => SPINNER.test(l))) return "working";
+  return "idle";
+}
+export const isAgentPane = (q) => /claude|codex/i.test(`${q?.app ?? ""} ${q?.program?.key ?? ""}`);
+const pick = (s) => [...String(s)].reduce((h, c) => (Math.imul(h, 31) + c.codePointAt(0)) >>> 0, 7);
+
+// A tab's party: one member per terminal pane (qs: its panes() in order), each a different character. A pane whose
+// character another pane already has gets one nobody in the tab has (the same one each time, by its pane id).
+// all: agents(); picks: shared("journey.party"); acts: shared("pixel.activity") (its status covers agents that report none)
+export function partyFor(qs, all, picks, acts, ownPane, max = 4) {
+  const used = new Set();
+  let out = qs.filter((q) => q.terminal).map((q) => {
+    const ag = all.find((a) => a.address === q.terminal) ?? null;
+    let c = character(picks?.[ag ? agentKey(ag, all) : `tab:${q.tab}`]) ?? ROSTER[0];
+    if (used.has(c.id)) {
+      const pool = ROSTER.filter((r) => !used.has(r.id));
+      c = pool[pick(q.pane) % pool.length] ?? c;
+    }
+    used.add(c.id);
+    const act = acts?.[q.terminal] ?? null;
+    const st = ag?.status ?? q.status ?? (isAgentPane(q) ? act?.status ?? null : null);
+    return { pane: q.pane, terminal: q.terminal, ch: c, st, act, anim: animFor(st, act), own: q.pane === ownPane, key: q.pane, summons: act?.count };
+  });
+  if (out.length > max) out = out.filter((m, i) => i < max - 1 || m.own).slice(0, max);
+  return out;
+}
+
 function cut(s, max = 60) {
   const t = clean(String(s ?? ""));
   return [...t].length > max ? [...t].slice(0, max - 1).join("") + "…" : t;

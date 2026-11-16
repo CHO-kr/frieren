@@ -1,35 +1,83 @@
-// Pixel pane header: a scene from the background (a 256 x 32 strip of it, scene.js) where the tab's party acts out what
-// its agents are doing (pixel-party reads the screens and shares it as shared("pixel.activity")): while any of them works,
-// the party (every pane of the tab, up to 4) faces the background's monster and a cast flies all the way to it; when all
-// rest they camp, sharing a meal by the fire by day and asleep by night; when one is done, a treasure chest. This pane's
-// member stands on a gold ring when the tab has more than one. An RPG battle line sits under the title.
-// Also everything pane-account showed: name, folder, the agent's account and model with its usage, status, and on hover
-// the split / zoom / close buttons. Props from the app: { pane, terminal }. Click: focus the pane.
-//   { "tab": "active", "pane": { "header": { "content": { "mod": "pixel-pane" }, "height": 72 } } }
+// Pixel pane: two views of the shown tab's Frieren party (pixel-party reads the agents' screens and shares what they
+// do as shared("pixel.activity")).
+//   { "mod": "pixel-pane", "props": { "stage": true } }   a layout block: the battle stage. One strip of the background
+//       where the shown tab's party (one member per pane, each a different character) acts out what its agents do
+//       (plan.js: a battle in three waves while any works, each kind of work its own move, specials when the SP gauge
+//       is full; a pastime at camp; a victory), with the battle log beside it. Each member's turns go through the
+//       kinds of work its agent did in the last KIND_MS; a change of kinds alone re-plans at most every REPLAN_MS, so
+//       a battle isn't cut off every time the agent starts another tool (a new status or party re-plans at once).
+//   the pane header ({ pane, terminal } from the app): one slim row: the pane's character and name, what it is doing,
+//       folder, the agent's account and model with its usage, status, and on hover split / zoom / close.
+//       Click: focus the pane.
+//   { "tab": "active", "pane": { "header": { "content": { "mod": "pixel-pane" }, "height": 30 } } }
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { panes, agents, props, run, theme, home, appHome, terminals, shared, exec, checking } from "herdr";
-import { ROSTER, character, battleLine, animFor, agentKey, launched, modelName, ART, alpha, mix } from "./lib.js";
-import { SCENE } from "./scene.js";
-import { plan, glyphs, isNight, MAX_PARTY } from "./plan.js";
+import { panes, agents, props, run, theme, home, appHome, terminals, shared, exec, checking, focused, spaces, layout } from "herdr";
+import { battleLine, partyFor, isAgentPane, launched, modelName, ART, alpha, mix, ACTING } from "./lib.js";
+import { STAGE } from "./stage.js";
+import { plan, glyphs, isNight, hash, MAX_PARTY, STEP, SLOT_MS } from "./plan.js";
 
-const isAgent = (p) => p?.program?.key === "claude" || p?.program?.key === "codex" || /claude|codex/i.test(p?.app ?? "");
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
-const SPR_H = ART.height * ART.scale;
-const S = ART.scale;
+const Z = ART.scale;
+const STAGE_H = STAGE.height * Z;
+const GLYPH_H = STAGE.glyphHeight * Z;
+const LOG_W = 300; // the battle log beside the stage, at least
+const KIND_MS = 5 * 60 * 1000; // the kinds of work a member's turns go through: what its agent did this recently
+const REPLAN_MS = 60 * 1000; // new kinds alone wait this long before the battle is planned again
 
 function folder(cwd) {
   if (!cwd) return "";
   const h = home();
   return cwd === h ? "~" : cwd.startsWith(h + "/") ? "~" + cwd.slice(h.length) : cwd;
 }
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+const makePlan = (job) => ({ base: job.base, full: job.full, at: job.at, sc: job.args ? plan(...job.args) : null });
+const sceneNow = () => (STAGE.scenes[shared("pixel.scene")] ? shared("pixel.scene") : "night");
+const tabParty = (tab, ownPane) => partyFor(panes().filter((q) => q.tab === tab), agents(), shared("journey.party") ?? {},
+  shared("pixel.activity") ?? {}, ownPane, MAX_PARTY);
 
 export default class PixelPane extends View {
   init(_props, cx) {
     this.hovered = false;
     this.found = null; // who.py's answer for an agent typed by hand: { key, at, account?, model?, error? }
     this.asking = false;
+    this.cache = null; // { base, full, at, sc }
+    this.seen = new Map(); // pane -> [{ kind, at }]: the kinds of work its agent did lately, in the order first seen
+    this.pending = false; // new kinds wait for REPLAN_MS
+    this.want = null; // a battle render asked for: planned on the timer below, not in render
+    this.timed = false;
     if (checking()) return;
+    if (props()?.stage) {
+      // Planning a long battle takes a while in the app's script engine, and a render that runs too long is cut off,
+      // so render only asks for a plan (this.want) and keeps drawing the last one; this makes it and redraws.
+      this.timed = true;
+      cx.timer.every(150, (cx) => {
+        const job = this.want;
+        if (!job) return;
+        this.want = null;
+        this.cache = makePlan(job);
+        cx.notify();
+      });
+      // the window's width and the clock's 20-minute slot change without anything else re-rendering us
+      this.size = null;
+      cx.timer.every(2000, (cx) => {
+        const w = globalThis.window?.viewport_size?.()?.width ?? null;
+        const slot = Math.floor(Date.now() / SLOT_MS);
+        const due = this.pending && Date.now() - (this.cache?.at ?? 0) >= REPLAN_MS;
+        if (due || w !== this.size?.w || slot !== this.size?.slot || isNight() !== this.size?.night) {
+          this.size = { w, slot, night: isNight() };
+          cx.notify();
+        }
+      });
+      return;
+    }
     cx.spawn(async (cx) => this.check(cx));
     cx.timer.every(3000, (cx) => this.check(cx));
   }
@@ -40,7 +88,7 @@ export default class PixelPane extends View {
 
   check(cx) {
     const p = this.me();
-    if (!p?.terminal || !isAgent(p) || launched(terminals().find((k) => k.address === p.terminal)?.argv)) {
+    if (!p?.terminal || !isAgentPane(p) || launched(terminals().find((k) => k.address === p.terminal)?.argv)) {
       if (this.found) { this.found = null; cx.notify(); }
       return;
     }
@@ -68,9 +116,9 @@ export default class PixelPane extends View {
   }
 
   button(t, id, icon, command, args, tip) {
-    return div().id(id).p(4).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.accent)).tooltip(tip)
+    return div().id(id).p(3).text_color(t.dim).hover((s) => s.bg(t.hover).text_color(t.accent)).tooltip(tip)
       .on_click((_e, cx) => { cx.stop_propagation(); run(command, args); })
-      .child(svg(ICON(icon)).size(14));
+      .child(svg(ICON(icon)).size(13));
   }
 
   chip(t, id, text, color, tip) {
@@ -79,7 +127,7 @@ export default class PixelPane extends View {
   }
 
   account(t, p) {
-    if (!isAgent(p)) return null;
+    if (!isAgentPane(p)) return null;
     const key = `${p.terminal}|${p.app ?? p.program?.key}`;
     const found = this.found?.key === key ? this.found : null;
     const start = launched(terminals().find((k) => k.address === p.terminal)?.argv) ?? (found?.account ? { account: found.account, model: found.model } : null);
@@ -102,85 +150,128 @@ export default class PixelPane extends View {
     return this.chip(t, `pa-${p.pane}`, parts.join(" · "), usage?.warning ? t.working : level, tip);
   }
 
-  render() {
-    const t = theme();
-    const p = this.me();
-    if (!p) return div();
-    const all = agents();
-    const agent = all.find((a) => a.address === p.terminal) ?? null;
-    const picks = shared("journey.party") ?? {};
-    const acts = shared("pixel.activity") ?? {};
-    // the tab's party: one member per pane (this one always among the first MAX_PARTY)
-    const memberOf = (q) => {
-      const ag = all.find((a) => a.address === q.terminal) ?? null;
-      const c = character(picks[ag ? agentKey(ag, all) : `tab:${q.tab}`]) ?? ROSTER[0];
-      const s = ag?.status ?? (isAgent(q) ? q.status : null);
-      return { pane: q.pane, ch: c, st: s, act: acts[q.terminal] ?? null, anim: animFor(s, acts[q.terminal]), own: q.pane === p.pane };
-    };
-    let party = panes().filter((q) => q.tab === p.tab).map(memberOf);
-    if (!party.some((m) => m.own)) party = [memberOf(p), ...party];
-    if (party.length > MAX_PARTY) party = [...party.filter((m, i) => i < MAX_PARTY - 1 || m.own)].slice(0, MAX_PARTY);
-    const mine = party.find((m) => m.own);
-    const ch = mine.ch;
-    const st = mine.st;
-    const act = mine.act;
-    const sceneId = SCENE.scenes[shared("pixel.scene")] ? shared("pixel.scene") : "night";
-    const night = isNight();
-    const sc = plan(party, sceneId, night);
-    const line = battleLine(ch, st, act);
-    const group = party.length > 1;
-    const foe = sc.monster ? SCENE.monsters[sc.monster].name : null;
-    if (sc.mode === "camp" && st === "idle") line.text = night ? (group ? "The party sleeps by the campfire… Zzz" : line.text) : `${group ? "The party shares" : `${ch.name} has`} a meal by the campfire`;
-    if (sc.mode === "battle" && line.anim === "rest") line.text = `${ch.name} stands ready`;
-    if (sc.mode === "battle" && foe) line.text += ` · vs ${foe}`;
-    if (sc.mode === "victory" && st === "done") line.text = "Quest complete! Treasure found";
-    const tip = `${party.map((m) => `${m.ch.name}${m.own && group ? " (this pane)" : ""}`).join(", ")}${foe ? ` vs ${foe}` : ""}`
-      + `\n${sc.mode === "battle" ? "In battle while an agent works" : sc.mode === "victory" ? "A task is done" : night ? "Camping: asleep (22:00-07:00)" : "Camping: a meal by the fire"}`;
-    const name = ((p.program?.agent || p.program?.shell) && p.program.name) || p.title || p.program?.name || "shell";
+  // ---------------------------------------------------------------- the pane header: one row
+  header(t, p) {
+    const party = tabParty(p.tab, p.pane);
+    const mine = party.find((m) => m.own) ?? party[0];
     const pane = p.pane;
-    const focused = p.focused;
+    if (!mine) return div().id(`pane-head-${pane}`).size_full().bg(alpha(t.chrome, "f0"));
+    const { ch, st, act } = mine;
+    const line = battleLine(ch, st, act);
+    const name = ((p.program?.agent || p.program?.shell) && p.program.name) || p.title || p.program?.name || "shell";
+    const focusedHere = p.focused;
     const chip = this.account(t, p);
     const lineColor = st === "blocked" ? t.blocked : st === "done" ? t.done : st === "working" ? mix(t.working, "#ffffff", 0.45) : t.muted;
-    const rim = alpha(t.foreground, "60");
     return h_flex()
       .id(`pane-head-${pane}`)
       .size_full()
-      .pr(8)
-      .gap(10)
+      .pl(6)
+      .pr(4)
+      .gap(8)
       .items_center()
-      .bg(focused ? alpha(t.surface, "f2") : alpha(t.chrome, "f0"))
+      .bg(focusedHere ? alpha(t.surface, "f2") : alpha(t.chrome, "f0"))
       .border_b(2)
-      .border_color(focused ? t.accent : alpha(t.border, "80"))
+      .border_color(focusedHere ? t.accent : alpha(t.border, "80"))
       .text_size(12)
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_click(() => run("pane.focus", { pane }))
-      // the scene: the background's strip, then props, the monster, the party (it gives way first in a narrow pane)
-      .child(div().id(`stage-${pane}`).relative().flex_shrink(1).min_w(SCENE.slots[0] * S + 60).w(SCENE.width * S + 2).h(SPR_H + 2)
-        .overflow_hidden().border_r(2).border_b(2).border_color(rim).tooltip(tip)
-        .child(image(`mods/pixel-party/scenes/${sceneId}.png`).absolute().left(0).top(0).w(SCENE.width * S).h(SPR_H))
-        .children(sc.items.map((it) => {
-          const g = glyphs(it);
-          const el = div().id(`sc-${pane}-${it.key}`).absolute().left(it.x * S).top(0).w(it.w * S).h(SPR_H).overflow_hidden()
-            .font_family(it.family).text_size(SPR_H).line_height(1).whitespace_nowrap();
-          return g.length > 1 ? el.frames(g, it.ms) : el.child(g[0]);
-        })))
-      .child(v_flex().flex_1().min_w(0).gap(5)
-        .child(h_flex().w_full().min_w(0).gap(7).items_center()
-          .when(focused, (el) => el.child(svg(ICON("cursor")).size(10).flex_none().text_color(t.accent)))
-          .child(div().flex_none().text_color(ch.color).child(ch.name))
-          .child(div().flex_none().truncate().max_w(240).text_color(t.foreground).child(name))
-          .child(div().flex_1().min_w(0).truncate().font_family("Galmuri9").text_size(10).text_color(t.dim).child(folder(p.cwd)))
-          .when(Boolean(chip), (el) => el.child(chip))
-          .when(st === "blocked", (el) => el.child(this.chip(t, `need-${pane}`, "Needs you", t.blocked)))
-          .when(st === "done", (el) => el.child(this.chip(t, `done-${pane}`, "Done", t.done)))
-          .when(this.hovered, (el) => el
-            .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }, "Split right"))
-            .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane }, "Split down"))
-            .child(this.button(t, `ph-z-${pane}`, p.zoomed ? "unzoom" : "zoom", "pane.zoom", { pane }, p.zoomed ? "Restore size" : "Zoom"))
-            .child(this.button(t, `ph-x-${pane}`, "close", "pane.close", { pane }, "Close"))))
-        // the battle line, in a JRPG message box
-        .child(h_flex().w_full().min_w(0).h(22).px(8).gap(8).items_center().bg(alpha(t.background, "b3")).border(1).border_color(rim)
-          .child(div().flex_none().text_color(lineColor).child(line.text))
-          .when(Boolean(line.detail), (el) => el.child(div().flex_1().min_w(0).truncate().font_family("Galmuri9").text_size(10).text_color(t.muted).child(line.detail)))));
+      .when(focusedHere, (el) => el.child(svg(ICON("cursor")).size(10).flex_none().text_color(t.accent)))
+      .child(div().flex_none().size(8).bg(ch.color).border(1).border_color(alpha(t.background, "")))
+      .child(div().flex_none().text_color(ch.color).child(ch.name))
+      .child(div().flex_none().truncate().max_w(200).text_color(t.foreground).child(name))
+      .child(div().flex_1().min_w(0).truncate().font_family("Galmuri9").text_size(10).text_color(lineColor)
+        .tooltip(line.detail ? `${line.text}\n${line.detail}` : line.text)
+        .child(line.detail ? `${line.text}  ${line.detail}` : line.text))
+      .child(div().flex_none().max_w(220).truncate().font_family("Galmuri9").text_size(10).text_color(t.dim).child(folder(p.cwd)))
+      .when(Boolean(chip), (el) => el.child(chip))
+      .when(st === "blocked", (el) => el.child(this.chip(t, `need-${pane}`, "Needs you", t.blocked)))
+      .when(st === "done", (el) => el.child(this.chip(t, `done-${pane}`, "Done", t.done)))
+      .when(this.hovered, (el) => el
+        .child(this.button(t, `ph-r-${pane}`, "split-right", "pane.split", { direction: "right", pane }, "Split right"))
+        .child(this.button(t, `ph-d-${pane}`, "split-down", "pane.split", { direction: "down", pane }, "Split down"))
+        .child(this.button(t, `ph-z-${pane}`, p.zoomed ? "unzoom" : "zoom", "pane.zoom", { pane }, p.zoomed ? "Restore size" : "Zoom"))
+        .child(this.button(t, `ph-x-${pane}`, "close", "pane.close", { pane }, "Close")));
+  }
+
+  // ---------------------------------------------------------------- the stage block
+  stageWidth() {
+    // the work column: the window, less the layout's padding, the sidebar and the gap, the block's border and the log
+    const vw = globalThis.window?.viewport_size?.()?.width ?? 1600;
+    const side = find(layout(), "sidebar")?.size?.px ?? 292;
+    const work = vw - 16 - side - 8 - 4;
+    return Math.max(200, Math.min(STAGE.stripWidth, Math.floor((work - LOG_W) / Z)));
+  }
+
+  stage(t) {
+    const f = focused();
+    const tabId = f?.tab ?? null;
+    const tab = spaces().flatMap((s) => s.tabs).find((x) => x.id === tabId) ?? null;
+    const party = tabId ? tabParty(tabId, f?.pane ?? null) : [];
+    const sceneId = sceneNow();
+    const night = isNight();
+    const W = this.stageWidth();
+    const ms = Date.now();
+    const pick = hash(tabId ?? "") + Math.floor(ms / SLOT_MS);
+    // what each working member's agent did lately: its turns go through these (thinking only when there's nothing else)
+    for (const m of party) {
+      if (m.st !== "working" || !m.anim) continue;
+      const list = (this.seen.get(m.key) ?? []).filter((e) => ms - e.at < KIND_MS);
+      const e = list.find((x) => x.kind === m.anim);
+      if (e) e.at = ms;
+      else list.push({ kind: m.anim, at: ms });
+      this.seen.set(m.key, list);
+    }
+    const kindsOf = (m) => {
+      if (m.st !== "working") return [m.anim];
+      const ks = (this.seen.get(m.key) ?? []).map((e) => e.kind);
+      const real = ks.filter((k) => k !== "think");
+      return (real.length ? real : ks).slice(-4);
+    };
+    const members = party.map((m) => ({ ...m, kinds: kindsOf(m) }));
+    const base = JSON.stringify([party.map((m) => [m.ch.id, m.st, m.own]), sceneId, night, W, pick]);
+    const full = JSON.stringify([base, members.map((m) => [m.kinds, m.summons ?? 0])]);
+    if (!this.cache || this.cache.base !== base || (this.cache.full !== full && ms - this.cache.at >= REPLAN_MS)) {
+      const job = { base, full, at: ms, args: party.length ? [members, sceneId, night, W, pick] : null };
+      if (this.timed) this.want = job;
+      else this.cache = makePlan(job);
+    }
+    this.pending = (this.cache?.full ?? null) !== full;
+    const sc = this.cache?.sc ?? null; // until the timer makes the new plan, the last one
+    const off = Math.round((STAGE.stripWidth - W) * (STAGE.anchor[sceneId] ?? 0.5));
+    const rim = alpha(t.foreground, "60");
+    const strip = div().id("stage-strip").relative().flex_none().w(W * Z).h(STAGE_H).overflow_hidden().border_r(2).border_color(rim)
+      .child(image(`mods/pixel-party/scenes/${sceneId}.png`).absolute().left(-off * Z).top(0).w(STAGE.stripWidth * Z).h(STAGE_H))
+      .children((sc?.items ?? []).map((it) => {
+        const g = glyphs(it);
+        const el = div().id(`st-${it.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
+          .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap();
+        return g.length > 1 ? el.frames(g, it.ms) : el.child(g[0]);
+      }));
+    // the log: what's happening, the line before, and who does what
+    const title = !sc ? "No party here" : sc.mode === "battle" ? `BATTLE · vs ${sc.foe}` : sc.mode === "victory" ? "VICTORY" : `CAMP · ${night ? "night" : "day"}`;
+    const color = !sc ? t.dim : sc.mode === "battle" ? t.working : sc.mode === "victory" ? t.done : t.muted;
+    const [now, before] = sc?.log ?? [["Open a terminal to start a party."], [""]];
+    const text = (id, list, el) => (list.length > 1 ? el.id(id).frames(list, STEP) : el.id(id).child(list[0] ?? ""));
+    const doing = party.filter((m) => m.st === "working" || m.st === "blocked").map((m) =>
+      `${m.ch.name}: ${m.st === "blocked" ? "needs you" : ACTING[m.anim] ?? "Acting"}${m.act?.detail && m.st === "working" ? ` ${m.act.detail}` : ""}`);
+    const tip = party.length ? party.map((m) => `${m.ch.name}${m.own ? " (focused pane)" : ""} · ${m.st ?? "shell"}${m.act?.detail ? ` · ${m.act.detail}` : ""}`).join("\n") : "";
+    return h_flex().id("pixel-stage").size_full().items_start().overflow_hidden().text_color(t.foreground)
+      .child(strip)
+      .child(v_flex().id("stage-log").flex_1().min_w(0).h(STAGE_H).px(10).py(2).gap(1).tooltip(tip)
+        .child(h_flex().flex_none().w_full().min_w(0).h(17).gap(8).items_center()
+          .child(sc?.title ? text("log-title", sc.title, div().flex_none().text_size(12).text_color(color))
+            : div().flex_none().text_size(12).text_color(color).child(title))
+          .child(div().flex_1().min_w(0).truncate().font_family("Galmuri9").text_size(10).text_color(t.dim)
+            .child([tab ? tab.name : "", party.map((m) => m.ch.name).join(" · ")].filter(Boolean).join("  —  "))))
+        .child(text("log-now", now, div().flex_none().w_full().h(17).truncate().text_size(12).text_color(t.foreground)))
+        .child(text("log-before", before, div().flex_none().w_full().h(15).truncate().font_family("Galmuri9").text_size(10).text_color(t.muted)))
+        .child(div().flex_none().w_full().h(15).truncate().font_family("Galmuri9").text_size(10).text_color(t.dim).child(doing.join("  ·  "))));
+  }
+
+  render() {
+    const t = theme();
+    if (props()?.stage) return this.stage(t);
+    const p = this.me();
+    return p ? this.header(t, p) : div();
   }
 }

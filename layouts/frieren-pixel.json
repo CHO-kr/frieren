@@ -33,7 +33,7 @@
               "type": "block",
               "content": { "mod": "pixel-spaces" },
               "size": { "weight": 0.6 },
-              "min": 110,
+              "min": 76,
               "border": { "width": 2, "color": "#efe6c8" },
               "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
             },
@@ -116,6 +116,14 @@
           ]
         },
         {
+          "id": "stage",
+          "type": "block",
+          "content": { "mod": "pixel-pane", "props": { "stage": true } },
+          "size": { "px": 80 },
+          "border": { "width": 2, "color": "#efe6c8" },
+          "background": { "gradient": ["#22307cf2", "#0e1546f2"], "angle": 180 }
+        },
+        {
           "id": "work-body",
           "type": "row",
           "gap": 8,
@@ -129,7 +137,7 @@
                   "header": {
                     "content": { "mod": "pixel-pane" },
                     "reveal": "always",
-                    "height": 72,
+                    "height": 30,
                     "position": "top"
                   },
                   "border": { "width": 2, "color": "#efe6c8a8" },
