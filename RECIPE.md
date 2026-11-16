@@ -1,14 +1,15 @@
-# Frieren Pixel & Journey
+# Frieren
 
 Two Windows layouts for running several Claude Code and Codex accounts side by side, dressed as a
-fantasy party from *Frieren*. Frieren Pixel draws every agent as a 16-bit pixel party member who acts
-out the tool it runs (spells for commands, a grimoire for reads, runes for edits, flight for web
-searches) over seven pixel scenes that change every hour. Frieren Journey has painted portraits and a
-wallpaper behind translucent terminals. Both list every saved Claude and Codex session (click to
-resume, right-click to switch account or agent), show each account's plan usage, and say which account
-and model each pane runs on. UI text is English.
+fantasy party from *Frieren*. In Frieren Pixel every agent is a 16-bit pixel party member who fights,
+casts and camps as its agent works; Frieren Journey has painted portraits behind translucent
+terminals. Both list every saved session and show each account's usage.
 
-![Frieren Pixel](preview.png)
+![Frieren](preview.png)
+
+The two layouts are Frieren Pixel (`frieren-pixel`) and Frieren Journey (`frieren-journey`). Both
+list every saved Claude and Codex session (click to resume, right-click to switch account or agent),
+show each account's plan usage, and say which account and model each pane runs on. UI text is English.
 
 This file describes Frieren Journey first. [Frieren Pixel](#frieren-pixel) at the end is built on top
 of it and lists only what differs.
