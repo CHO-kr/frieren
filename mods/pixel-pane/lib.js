@@ -25,7 +25,7 @@ export const character = (id) => BY_ID.get(id) ?? null;
 export const facePath = (c) => (c ? `mods/pixel-party/faces/${c.id}.png` : null);
 // Each character's animations live in its own color pixel font (mods/pixel-party/fonts/FrierenDot<v>-<id>.ttf).
 // The version is in the family name: Herdr keeps a loaded family in memory, so a rebuilt font needs a new name.
-export const FONT_VERSION = 3;
+export const FONT_VERSION = 4;
 export const familyOf = (c) => `FrierenDot${FONT_VERSION} ${c.name}`;
 
 // Sprite animations: one glyph per frame. Stage glyphs are 80x32 art pixels (the session header), solo glyphs 36x32
@@ -41,6 +41,12 @@ const ANIMS = {
   summon: [0xe02a, 8, 130],
   alert: [0xe032, 2, 380],
   victory: [0xe034, 8, 170],
+  // v4, for the session header's scene (pixel-pane): a meal at the campfire, and facing left (the fire's far side)
+  eat: [0xe03c, 4, 320],
+  eat_l: [0xe040, 4, 320],
+  rest_l: [0xe044, 4, 450],
+  stand_l: [0xe048, 2, 650],
+  alert_l: [0xe04a, 2, 380],
 };
 export const ART = { height: 32, stage: 80, solo: 36, scale: 2 };
 export function frames(anim, solo) {
@@ -48,6 +54,19 @@ export function frames(anim, solo) {
   const first = base + (solo ? 0x400 : 0);
   return { list: Array.from({ length: n }, (_, i) => String.fromCodePoint(first + i)), ms };
 }
+
+// Colors follow the background scene: pixel-chrome writes the scene's theme overrides into the layout ("colors"), so
+// mods take theme() colors, with these for an alpha or a lighter tint. The stage behind a sprite has one picture per
+// scene (shared "pixel.scene"; mods/pixel-party/backdrops/<scene>-stage.png and -solo.png).
+export const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
+export function mix(a, b, k) {
+  const ch = (c, i) => parseInt(String(c).slice(1 + i * 2, 3 + i * 2), 16) || 0;
+  return `#${[0, 1, 2].map((i) => Math.round(ch(a, i) * (1 - k) + ch(b, i) * k).toString(16).padStart(2, "0")).join("")}`;
+}
+const SCENE_IDS = ["night", "dawn-flowers", "meteor-night", "snow-north", "autumn-road", "mage-library", "lakeside-town"];
+export const backdrop = (scene, solo) => (SCENE_IDS.includes(scene)
+  ? `mods/pixel-party/backdrops/${scene}-${solo ? "solo" : "stage"}.png`
+  : `mods/pixel-party/backdrop-${solo ? "solo" : "stage"}.png`);
 
 // What a status and the current activity look like.
 export function animFor(status, activity) {

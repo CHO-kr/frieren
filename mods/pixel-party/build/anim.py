@@ -12,7 +12,7 @@ import colrfont
 
 NAMES = ['frieren', 'fern', 'stark', 'himmel', 'heiter', 'eisen', 'sein', 'ubel', 'land', 'denken', 'methode',
          'flamme', 'serie', 'kanne', 'lawine', 'wirbel']
-FONT_VERSION = 3  # bump on every rebuild: Herdr keeps a loaded family in memory, a new name makes it load the new file
+FONT_VERSION = 4  # bump on every rebuild: Herdr keeps a loaded family in memory, a new name makes it load the new file
 FAMILY = {n: f'FrierenDot{FONT_VERSION} ' + n.capitalize() for n in NAMES}
 
 # magic per character: style (bolt | slash | holy) and colors (core, glow, deep)
@@ -40,6 +40,13 @@ STAGE_W = 80    # the session-header stage
 SOLO_W = 36     # the party-card stage
 SX = 16         # x of the character's head centre
 STAGE_BASE, SOLO_BASE = 0xE000, 0xE400
+# The session header's scene (scene_art.py): a 256-wide strip of the background, the party standing at SLOTS (head
+# centres) and a monster whose left edge is at HIT_X. A spell cast there flies all the way to the monster, so each
+# slot has its own cast glyphs (SCENE_BASE + slot * 12 + frame), 256 wide, drawn where they stand.
+SCENE_W, SCENE_BASE = 256, 0xE800
+SLOTS = [22, 48, 74, 100]
+HIT_X = 184
+FLIPPED = {'rest_l', 'eat_l', 'stand_l', 'alert_l'}  # facing left (the far side of the campfire)
 
 
 def hexc(h, a=255):
@@ -268,10 +275,16 @@ def tip_of(spr):
 RIM = None   # no rim: the stage has a light backdrop (backdrop-*.png) so dark outlines read
 
 
-def place(cv, poses, anchors, pose, dx=0, dy=0):
+def place(cv, poses, anchors, pose, dx=0, dy=0, flip=False, head=SX):
+    """Draws a pose with its head centre at `head` (mirrored: at w-1-head, facing left)."""
     from scipy import ndimage
     spr = poses[pose]
-    x = SX - int(round(anchors[pose])) + dx
+    a = anchors[pose]
+    if flip:
+        spr = spr[:, ::-1]
+        a = spr.shape[1] - 1 - a
+        head = cv.w - 1 - head
+    x = head - int(round(a)) + dx
     y = H - spr.shape[0] + dy
     if RIM:
         m = np.pad(spr[..., 3] > 0, 1)
@@ -295,14 +308,15 @@ def animations(name, poses, anchors):
     head_top = H - poses['idle'].shape[0]
     out = {}
 
-    def frame(w, ops):
+    def frame(w, ops, flip=False):
         cv = Canvas(w)
-        shadow(cv, SX, 12)
+        shadow(cv, w - 1 - SX if flip else SX, 12)
         for op in ops:
             op(cv)
         return cv.out()
 
     P = lambda pose, dx=0, dy=0: (lambda cv: place(cv, poses, anchors, pose, dx, dy))
+    PL = lambda pose, dx=0, dy=0: (lambda cv: place(cv, poses, anchors, pose, dx, dy, flip=True))
 
     # rest: asleep with z z z
     out['rest'] = (450, [[P('sleep'), (lambda cv, f=f: zzz(cv, SX + 8, head_top + 4, f))] for f in range(4)])
@@ -415,7 +429,78 @@ def animations(name, poses, anchors):
             flower(cv, x, y, pet[k % len(pet)], min(3, max(0, f - k // 2)))
     out['victory'] = (170, [[(lambda cv, f=f: flowers(cv, f)), P('cheer', 0, -2 if f % 2 == 1 else 0)] for f in range(8)])
 
-    return {k: (ms, [(lambda w, ops=ops: frame(w, ops)) for ops in frames]) for k, (ms, frames) in out.items()}
+    # ---- appended for the header scene (v4); the order above must not change (lib.js ANIMS) ----
+    # eat: a meal by the campfire, a speech bubble beside the head shows the food, then a heart
+    def bub(cv, f, flip):
+        icon = None if f == 0 else MEAT if f < 3 else HEART
+        if icon:
+            x = (cv.w - 1 - SX) - 6 - 11 if flip else SX + 6
+            bubble(cv, x, 0, icon, flip)
+    out['eat'] = (320, [[P('idle', 0, 1 if f == 2 else 0), (lambda cv, f=f: bub(cv, f, False))] for f in range(4)])
+    out['eat_l'] = (320, [[PL('idle', 0, 1 if f == 2 else 0), (lambda cv, f=f: bub(cv, f, True))] for f in range(4)])
+    out['rest_l'] = (450, [[PL('sleep'), (lambda cv, f=f: zzz(cv, cv.w - 1 - SX - 15, head_top + 4, f))] for f in range(4)])
+    out['stand_l'] = (650, [[PL('idle')], [PL('idle', 0, 1)]])
+    def bang_l(cv):
+        spr_w = poses['alert'].shape[1]
+        x = (cv.w - 1 - SX) - (spr_w - 1 - int(round(anchors['alert']))) - 9 + 2
+        bang(cv, max(0, x), ay2)
+    out['alert_l'] = (380, [[PL('alert'), bang_l], [PL('alert', 0, 1)]])
+
+    return {k: (ms, [(lambda w, ops=ops, fl=(k in FLIPPED): frame(w, ops, fl)) for ops in frames]) for k, (ms, frames) in out.items()}
+
+
+# speech bubble (11 x 9, its tail toward the head) and the icons in it (8 x 5)
+BUBBLE = ['.#########.', '#wwwwwwwww#', '#wwwwwwwww#', '#wwwwwwwww#', '#wwwwwwwww#', '#wwwwwwwww#', '#wwwwwwwww#',
+          '.##w######.', '.#w#.......', '.##........']
+MEAT = ['bb......', 'bbmmmm..', '..mhmmm.', '..mmmmMbb', '...MMM.bb']
+HEART = ['.rr.rr.', 'rrrrrrr', 'rrrrrrr', '.rrrrr.', '..rrr..', '...r...']
+ICON_COLORS = {'b': '#e8dfcc', 'm': '#b0582a', 'h': '#f09a5a', 'M': '#7a3418', 'r': '#ff4f6a'}
+
+
+def bubble(cv, x, y, icon, flip=False):
+    rows = [r[::-1] for r in BUBBLE] if flip else BUBBLE
+    cv.bitmap(rows, x, y, {'#': hexc('#2a1a3a'), 'w': hexc('#fffaf0')})
+    iw = max(len(r) for r in icon)
+    cv.bitmap(icon, x + 1 + (9 - iw) // 2 + (1 if iw < 9 else 0), y + 1 + (6 - len(icon)) // 2,
+              {k: hexc(v) for k, v in ICON_COLORS.items()})
+
+
+def scene_casts(name, poses, anchors):
+    """The cast animation for each scene slot: charge, a projectile all the way to HIT_X, the burst there (frames
+    9-10, when the monster flinches), 12 frames at 90 ms like 'cast'. Drawn in a SCENE_W canvas."""
+    m = MAGIC[name]
+    style = m[0]
+    tx, ty = tip_of(poses['attack'])
+    out = []
+    for head in SLOTS:
+        ax = head - int(round(anchors['attack']))
+        ay = H - poses['attack'].shape[0]
+        tipx, tipy = ax + tx + 1, ay + ty
+        span = HIT_X + 2 - tipx
+        steps = [tipx + 2 + span * k // 5 for k in range(1, 6)]
+        A = lambda pose, dx=0, head=head: (lambda cv: place(cv, poses, anchors, pose, dx, 0, head=head))
+
+        def proj(cv, x, tipx=tipx, tipy=tipy):
+            if style == 'bolt':
+                bolt(cv, tipx, x, tipy, m)
+            elif style == 'slash':
+                slash(cv, x, tipy, m)
+            else:
+                holy(cv, x, tipy, m)
+        ops = [[A('idle')]] + [[A('attack'), (lambda cv, n=n, tipx=tipx, tipy=tipy: charge(cv, tipx, tipy, m, n))] for n in (1, 2, 3)]
+        ops += [[A('attack'), (lambda cv, x=x, proj=proj: proj(cv, x))] for x in steps]
+        ops += [[A('attack'), (lambda cv, tipy=tipy: burst(cv, HIT_X + 2, tipy, m, 0))],
+                [A('attack', -1), (lambda cv, tipy=tipy: burst(cv, HIT_X + 2, tipy, m, 1))],
+                [A('idle')]]
+
+        def frame(ops, head=head):
+            cv = Canvas(SCENE_W)
+            shadow(cv, head, 12)
+            for op in ops:
+                op(cv)
+            return cv.out()
+        out.append([frame(o) for o in ops])
+    return out
 
 
 def face(poses, anchors, out_png, size_art=18, bg=(24, 34, 79, 255)):
@@ -444,6 +529,10 @@ def build_one(args):
             for i, f in enumerate(fl):
                 frames.append((w, f(w)))
                 order.append((w, k, i))
+    for s, fl in enumerate(scene_casts(name, poses, anchors)):
+        for i, f in enumerate(fl):
+            frames.append((SCENE_W, f))
+            order.append((SCENE_W, f'cast_s{s}', i))
     # palette: unique RGBA across all frames
     allpx = np.concatenate([f[f[..., 3] > 0].reshape(-1, 4) for _, f in frames])
     # snap alpha to 16 steps to keep the palette small
@@ -502,9 +591,10 @@ def build_font(path, family, glyph_frames, palette, order):
     metrics = {'.notdef': (STAGE_W * U, 0), 'space': (8 * U, 0)}
     cmap = {0x20: 'space'}
     layers = {}
-    counters = {STAGE_W: 0, SOLO_W: 0}
+    counters = {STAGE_W: 0, SOLO_W: 0, SCENE_W: 0}
+    bases = {STAGE_W: STAGE_BASE, SOLO_W: SOLO_BASE, SCENE_W: SCENE_BASE}
     for (w, cells), (w2, k, i) in zip(glyph_frames, order):
-        base_cp = STAGE_BASE if w == STAGE_W else SOLO_BASE
+        base_cp = bases[w]
         cp = base_cp + counters[w]
         counters[w] += 1
         base = f'g{cp:04X}'
@@ -555,6 +645,7 @@ def manifest(spr_dir):
                            'solo': [SOLO_BASE + o + i for i in range(len(fl))]}
         s += len(fl)
         o += len(fl)
+    out['scene'] = {'width': SCENE_W, 'slots': SLOTS, 'hit': HIT_X, 'cast': [[SCENE_BASE + k * 12 + i for i in range(12)] for k in range(len(SLOTS))]}
     return out
 
 

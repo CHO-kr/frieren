@@ -8,13 +8,15 @@
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking } from "herdr";
-import { ROSTER, character, facePath, familyOf, frames, battleLine, classify, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART } from "./lib.js";
+import { ROSTER, character, facePath, familyOf, frames, battleLine, classify, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART, alpha, backdrop } from "./lib.js";
 
 const HOME = appHome();
 const JOBS_FILE = `${HOME}/mods/journey-party/jobs.json`;
 const WHO = `${HOME}/mods/pane-account/who.py`;
 const DATA = () => `${home()}/AppData/Local/herdr-sessions`;
 const STATUS = { working: "Acting", blocked: "Needs help", done: "Done", idle: "Resting" };
+// While working, the card's status names the motion; the full battle line and its detail are in the card's tooltip.
+const ACTING = { think: "Thinking", cast: "Casting", read: "Reading", write: "Writing", fly: "Scouting", summon: "Summoning" };
 const SOLO_W = ART.solo * ART.scale;
 const SPR_H = ART.height * ART.scale;
 
@@ -157,20 +159,24 @@ export default class PixelParty extends View {
 
   card(a, ch, now, t, act) {
     const f = this.facts(a);
-    const frame = a.status === "blocked" ? t.blocked : a.focused ? t.accent : "#7880c880";
+    const frame = a.status === "blocked" ? t.blocked : a.focused ? t.accent : alpha(t.border, "80");
     const statusColor = t[a.status] ?? t.dim;
     const tagColor = f.codex ? t.unknown : t.accent;
     const g = gauges(f.usage, now);
     const who = [f.account ?? (f.pending ? "checking account" : null), f.model].filter(Boolean).join(" · ");
     const line = battleLine(ch, a.status, act);
+    const statusText = a.status === "working" ? (ACTING[line.anim] ?? STATUS.working) : (STATUS[a.status] ?? a.status ?? "");
+    const tip = `${ch.name} · ${ch.role}\n${line.detail ? `${line.text}  ${line.detail}` : line.text}`;
+    // Two lines over the gauges, so a card is as tall as its 64 px stage.
     return h_flex()
       .id(`party-${a.address}`)
       .w_full()
       .flex_none()
-      .p(5)
+      .p(4)
       .gap(7)
       .items_center()
-      .bg(a.focused ? "#ffd36a14" : "#0b10304d")
+      .tooltip(tip)
+      .bg(a.focused ? alpha(t.accent, "14") : alpha(t.background, "4d"))
       .border(2)
       .border_color(frame)
       .cursor_pointer()
@@ -179,7 +185,7 @@ export default class PixelParty extends View {
       .child(
         // the battle tile: a strip of ground under the sprite
         div().relative().flex_none().w(SOLO_W).h(SPR_H).border(0)
-          .child(image("mods/pixel-party/backdrop-solo.png").absolute().left(0).top(0).w(SOLO_W).h(SPR_H).when(a.status === "idle", (el) => el.opacity(0.7)))
+          .child(image(backdrop(shared("pixel.scene"), true)).absolute().left(0).top(0).w(SOLO_W).h(SPR_H).when(a.status === "idle", (el) => el.opacity(0.7)))
           .child(div().absolute().left(0).top(0).child(sprite(ch, line.anim, true, `spr-${a.address}`))),
       )
       .child(
@@ -187,13 +193,11 @@ export default class PixelParty extends View {
           .child(h_flex().w_full().min_w(0).gap(6).items_center()
             .when(a.focused, (el) => el.child(svg("mods/pixel-chrome/icons/cursor.svg").size(10).flex_none().text_color(t.accent)))
             .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(a.tab_name || a.address))
-            .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(statusColor).child(STATUS[a.status] ?? a.status ?? "")))
-          .child(h_flex().w_full().min_w(0).gap(5).items_center()
-            .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(ch.color).child(`${ch.name} · ${ch.role}`))
-            .when(isAgent(a), (el) => el.child(div().flex_none().px(3).border(1).border_color(tagColor).font_family("Galmuri9").text_size(10).text_color(tagColor).child(f.codex ? "Codex" : "Claude"))))
-          .child(div().w_full().min_w(0).truncate().font_family("Galmuri9").text_size(10).text_color(a.status === "working" ? t.working : t.dim)
-            .child(line.detail ? `${line.text} ${line.detail}` : line.text))
-          .when(Boolean(who), (el) => el.child(div().w_full().min_w(0).truncate().font_family("Galmuri9").text_size(10).text_color(t.dim).child(who)))
+            .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(a.status === "working" ? t.working : statusColor).child(statusText)))
+          .child(h_flex().w_full().min_w(0).gap(5).items_center().font_family("Galmuri9").text_size(10)
+            .child(div().flex_none().text_color(ch.color).child(ch.name))
+            .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(who || (isAgent(a) ? "" : line.text)))
+            .when(isAgent(a), (el) => el.child(div().flex_none().px(3).border(1).border_color(tagColor).text_color(tagColor).child(f.codex ? "Codex" : "Claude"))))
           .when(isAgent(a), (el) => el
             .child(this.bar(`hp-${a.address}`, "HP", g.hp, "#7fe0b8", t))
             .child(this.bar(`mp-${a.address}`, "MP", g.mp, "#86b4ff", t))),
@@ -204,10 +208,10 @@ export default class PixelParty extends View {
   compact(a, ch, t) {
     const color = t[a.status] ?? null;
     return div().id(`party-${a.address}`).relative().size(36).flex_none().border(2)
-      .border_color(a.status === "blocked" ? t.blocked : a.focused ? t.accent : "#7880c880")
+      .border_color(a.status === "blocked" ? t.blocked : a.focused ? t.accent : alpha(t.border, "80"))
       .cursor_pointer().on_click(() => run("agent.focus", { terminal: a.address }))
       .child(image(facePath(ch)).size(32))
-      .when(Boolean(color) && a.status !== "idle", (el) => el.child(div().absolute().right(0).bottom(0).size(8).bg(color).border(1).border_color("#0b1030")));
+      .when(Boolean(color) && a.status !== "idle", (el) => el.child(div().absolute().right(0).bottom(0).size(8).bg(color).border(1).border_color(alpha(t.background, ""))));
   }
 
   render(cx) {
@@ -235,7 +239,7 @@ export default class PixelParty extends View {
       .min_h(0)
       .text_color(t.foreground)
       .text_size(12)
-      .child(h_flex().h(28).flex_none().pl(10).pr(10).gap(6).items_center().border_b(2).border_color("#7880c860")
+      .child(h_flex().h(28).flex_none().pl(10).pr(10).gap(6).items_center().border_b(2).border_color(alpha(t.border, "60"))
         .child(svg("mods/pixel-chrome/icons/heart.svg").size(12).text_color("#ff7a8a"))
         .child(div().text_color(t.accent).child("PARTY"))
         .child(div().font_family("Galmuri9").text_size(10).text_color(t.muted).child(`${list.length} ${list.length === 1 ? "member" : "members"}`))

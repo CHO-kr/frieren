@@ -345,7 +345,10 @@ at the same paths if you like.
 # Frieren Pixel
 
 The same workspace drawn as a 16-bit RPG. Every agent is a pixel party member on a little stage, acting
-out the tool the agent is running. Seven pixel scenes take turns as the background, one per hour.
+out the tool the agent is running. In each pane header the panes of a tab meet in one scene cut from the
+background: they fight its monster while any of them works, find a treasure when one is done, and camp
+(a meal by day, asleep by night) when all rest. Seven pixel scenes take turns as the background, one per
+hour, and the whole palette follows the scene.
 
 ![Frieren Pixel](docs/pixel.png)
 
@@ -361,20 +364,24 @@ and run `mods/pane-account/who.py`, so the journey mods must be installed too.
 (min 64, max 480, gap 8): `brand` (`pixel-chrome`, 52px), `spaces` (`pixel-spaces`, weight 0.6),
 `agents` (`pixel-party`, weight 2), `claude-sessions`, `codex-sessions` (0.9 each), `sidebar-footer`
 (`pixel-chrome` props `{footer: true}`, 64px). `topbar` row 56px, gap 8: `usage` (`usage-gauge` props
-`{font: "Galmuri9", size: 10}`, 912px), `tabs` (`pixel-tabs`), `smart-paste` (0px). `main` pane:
+`{font: "Galmuri9", size: 10}`, weight 1), `tabs` (`pixel-tabs`, weight 1.3), `smart-paste` (0px). Both
+are weighted, not fixed: a fixed usage width pushed the window buttons out of a non-maximized window
+(Herdr ignores `min` on weighted items and hands nothing back from a `max`, so the mods shrink instead,
+see below). `main` pane:
 header `pixel-pane`, height 72, border 2px `#efe6c8a8`, focus 2px `#ffd36a`, radius 0, gap 8. Every
 block has a 2px `#efe6c8` border and a 180° gradient: `#22307cf2 → #0e1546f2` for the brand row and the
-top bar, `#1c2a74f0 → #0c123ff0` for the rest. Root: `background` `{image:
-"backgrounds/frieren-pixel-night.png", fit: "cover"}`, `theme: "frieren-pixel"`, `ui_font: "Galmuri11"`,
+top bar, `#1c2a74f0 → #0c123ff0` for the rest (these are the night scene's; other scenes swap them).
+Root: `background` `{image: "backgrounds/frieren-pixel-night.png", fit: "cover"}`, `theme:
+"frieren-pixel"`, `colors` (the scene's theme overrides, on one line), `ui_font: "Galmuri11"`,
 `terminal_opacity: 0.55`, `terminal_padding: [12, 10]`, `titlebar: "none"`, `traffic_lights: [20, 26]`.
 
 **Fonts**: `mods/pixel-chrome/fonts/` holds Galmuri11 (+ Bold), Galmuri9 and Galmuri14 (SIL OFL 1.1).
 Herdr loads a mod's `fonts/` at start. Sizes that render on the pixel grid: Galmuri9 at 10px,
 Galmuri11 at 12px, Galmuri14 at 15px.
 
-**Sprites**: each character is one COLRv0 color font, `mods/pixel-party/fonts/FrierenDot3-<id>.ttf`,
-family `FrierenDot3 <Name>`. One glyph is one animation frame, 32 art pixels tall: stage frames are 80
-wide from U+E000, card frames 36 wide from U+E400. They are drawn with `text_size(64)`,
+**Sprites**: each character is one COLRv0 color font, `mods/pixel-party/fonts/FrierenDot4-<id>.ttf`,
+family `FrierenDot4 <Name>`. One glyph is one animation frame, 32 art pixels tall: stage frames are 80
+wide from U+E000, card frames 36 wide from U+E400, and the header scene's casts 256 wide from U+E800. They are drawn with `text_size(64)`,
 `line_height(1)` and `.frames(list, ms)`, so one art pixel is 2×2 screen pixels. The animations
 (first stage codepoint, frames, ms per frame):
 
@@ -390,8 +397,25 @@ wide from U+E000, card frames 36 wide from U+E400. They are drawn with `text_siz
 | `summon` | E02A | 8 | 130 | Agent, Task, Explore, Plan, subagents |
 | `alert` | E032 | 2 | 380 | blocked |
 | `victory` | E034 | 8 | 170 | done |
+| `eat` | E03C | 4 | 320 | header camp by day, idle (a speech bubble with meat or a heart) |
+| `eat_l` | E040 | 4 | 320 | the same, facing left |
+| `rest_l` | E044 | 4 | 450 | header camp by night, facing left |
+| `stand_l` | E048 | 2 | 650 | header camp, a shell, facing left |
+| `alert_l` | E04A | 2 | 380 | header camp, blocked, facing left |
 
-A stage sits on `backdrop-stage.png` (160×64) or `backdrop-solo.png` (72×64), at 70% opacity when idle.
+The header scene's casts: party slot `i` (0–3, standing at x = 22, 48, 74, 100 of 256) has 12 frames
+from U+E800 + 12·i, 90 ms each, 256 wide: the member's cast, the bolt / slash / holy light flying to
+x = 184, and a burst on frames 9–10.
+
+A card's stage sits on `backdrops/<scene>-solo.png` (72×64) and the old 160×64 stage on
+`backdrops/<scene>-stage.png` (from `backdrop.py`, in the scene's colors), at 70% opacity when idle.
+
+**Monsters and props** (`FrierenDot4 Monsters`, `FrierenDot4 Props`, built by `build/scene_art.py`):
+eight monsters, each 12 idle frames and 12 battle frames (they flash and flinch on frames 9–10, when the
+cast lands), at 90 ms: Wyvern, Blue Slime, Will-o'-Wisp, Frost Wolf, Grumpy Stump, Mimic, Lake Serpent,
+Stone Golem. Props: a campfire, embers, a cooking pot with steam, a tent, a closed and an open chest, a
+bedroll, a signpost, a backpack, a sparkling treasure and the gold ring. The code points, widths and
+places are generated into `mods/pixel-pane/scene.js`.
 `mods/pixel-party/build/` rebuilds the fonts from the cut sprites in `build/spr/<id>.npz`
 (`python anim.py <spr> <fonts> <faces> <manifest.json>`). Each glyph's `hmtx` left side bearing must
 equal its `xMin`, or Windows shifts each color layer on its own and the sprite gets holes. Herdr keeps a
@@ -402,15 +426,38 @@ loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` a
   1.5s it runs `hc read <terminal>` for each agent and `classify()` (in `lib.js`) turns the last tool line
   into `{kind, detail}`. It understands Claude Code's `● Tool(args)`, collapsed groups (`Reading 1 file…`;
   a finished group like `Read 1 file, ran 2 shell commands` means thinking again), `⎿ $ cmd`, and Codex's
-  `•` lines. It shares `pixel.activity` (`{terminal: {kind, detail}}`). A card: the member on the
-  36×32 stage, tab or session title, status (Acting / Needs help / Done / Resting), `name · role`, a
-  `Claude`/`Codex` tag, the battle line, `account · model`, HP and MP bars. Header: `PARTY N members`,
-  `N acting`, `N need help`.
-- `pixel-pane` (`main.js`, `lib.js`): the 72px pane header. The member on the 80×32 stage, the battle
-  line (`Frieren casts a spell!`) with the tool's detail, the folder, `account · model · weekly N%`,
-  `Needs you` / `Done` chips, and Split right / Split down / Zoom / Close buttons.
+  `•` lines. It shares `pixel.activity` (`{terminal: {kind, detail}}`). A card (padding 4, about 76px,
+  no taller than its stage): the member on the 36×32 stage, then two lines above the bars. Line 1: tab or
+  session title and status (Resting / Needs help / Done, or while working the motion: Thinking, Casting,
+  Reading, Writing, Scouting, Summoning). Line 2: the member's name in their color, `account · model` (a
+  shell shows its battle line) and a `Claude`/`Codex` tag. Then HP and MP bars. The card's tooltip has
+  the full battle line. Header: `PARTY N members`, `N acting`, `N need help`.
+- `pixel-pane` (`main.js`, `lib.js`, `plan.js`, `scene.js`): the 72px pane header.
+  - **The scene**, 514px wide (it shrinks first in a narrow pane): `mods/pixel-party/scenes/<scene>.png`,
+    a 256×32 strip of the background (every other pixel of its art, so it matches the sprites' pixel size)
+    drawn at 2×, then everything from `plan()` as absolutely
+    placed glyphs. The party is one member per pane of the same tab (`panes()`), up to 4, this pane's
+    member always in. `plan(members, scene, night)` in `plan.js` (pure, no Herdr calls) decides:
+    - **battle** while any member is `working`: the scene's monster at x = 182 (`golem` for 3+ members),
+      in its battle frames while someone casts. Members stand at the slots, a casting member draws its
+      256-wide cast glyphs, the others their motion (a resting one `stand`).
+    - **victory** when one is `done` and none works: a treasure chest where the monster stood.
+    - **camp** otherwise: signpost, backpack, tent, and in the middle (x = 121) the cooking pot by day,
+      embers and a bedroll by night (`isNight`: 22:00–07:00). Members sit around it, the second and fourth
+      facing left (`*_l`): `eat` by day, `rest` by night, `alert` if blocked, `stand` for a shell.
+    - With more than one member, the gold ring under this pane's member.
+    The scene's monster: night → Wyvern, dawn-flowers → Blue Slime, meteor-night → Will-o'-Wisp,
+    snow-north → Frost Wolf, autumn-road → Grumpy Stump, mage-library → Mimic, lakeside-town → Lake
+    Serpent. The tooltip names the party and the foe.
+  - The battle line (`Frieren casts a spell! · vs Wyvern`, `The party shares a meal by the campfire`,
+    `The party sleeps by the campfire… Zzz`, `Quest complete! Treasure found`) with the tool's detail,
+    the folder, `account · model · weekly N%`, `Needs you` / `Done` chips, and Split right / Split down /
+    Zoom / Close buttons on hover.
 - `pixel-tabs` (`main.js`, `lib.js`): tabs as inventory slots with the member's 36px pixel face and
-  status, then the + menu, Files / Changes buttons and the window buttons.
+  status, then the + menu, Files / Changes buttons and the window buttons. The Files / Changes buttons
+  shrink to their icons (min 38px, label truncated, tooltip) before anything pushes the window buttons out.
+- `usage-gauge`: the chips sit in a row that shrinks and scrolls sideways (`min_w(0)`,
+  `overflow_x_scrollbar`); the Results button keeps its size.
 - `pixel-spaces` (`main.js`, `art/<place>.png`, 32×32 art at 64px): `SPACES · DESTINATIONS`. Each
   space is a place (Royal Capital, Old Ruins, Flower Hill, Forest Camp, Rampart Watchtower, Town Street,
   Starlit Old Tree, Moonlit Castle) with branch and ahead/behind. When the sidebar is folded it draws a
@@ -426,10 +473,22 @@ loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` a
 **Scenes**: `pixel-chrome`'s brand row picks scene `(floor(now / SCENE_EVERY) + offset) mod 7` from
 `SCENES` (`night`, `dawn-flowers`, `meteor-night`, `snow-north`, `autumn-road`, `mage-library`,
 `lakeside-town`), with `SCENE_EVERY` one hour and `offset` in shared `pixel.scene.offset` (clicking
-`Journey · Day N` adds one). Once a minute it reads the shown layout's file and, only if its
-`"image"` is one of `backgrounds/frieren-pixel-*.png`, writes the new path with `writeTextFile`. Herdr
-has no command for a layout's background, and a layout-file edit is applied live. The footer copy
-doesn't rotate.
+`Journey · Day N`, or the key command `pixel-chrome.next-scene`, adds one). Once a minute it reads the
+shown layout's file and, only if its `"image"` is one of `backgrounds/frieren-pixel-*.png`, writes it
+back painted in the scene with `writeTextFile`: the image path, the root `"colors"` line (replaced, or
+added after `"theme"`), and every block frame and gradient color swapped role by role from whichever
+scene's colors the file has now (a color that is no scene's is left alone). Then it shares the scene id
+as `pixel.scene`, which pixel-party (card stages) and pixel-pane (header strip and monster) read. Herdr
+has no command for a layout's background or colors, and a layout-file edit is applied live. The footer
+copy doesn't rotate.
+
+**Palettes**: `mods/pixel-chrome/scenes.js`, made by `build/palettes.py` from each background: per
+scene a `colors` set (background, foreground, muted, dim, accent, working, idle, chrome, surface,
+popover, raised, hover, border, input, ring, …) and a `layout` set (frames, gradients). Every scene keeps
+the night scene's lightness for each role, so contrast is the same in all seven. The terminal tint is
+`colors.background` (alpha `c4`); an empty terminal at `terminal_opacity` 0.55 shows 0.795 × that tint
+over the background. The mods take colors from `theme()` and derive the rest with `alpha(c, a)` and
+`mix(a, b, k)` (in `lib.js`), so nothing is hard-coded to night.
 
 ## Done when (Frieren Pixel)
 
@@ -439,7 +498,13 @@ doesn't rotate.
   `… casts a spell!  npm test`. Reading a file switches to the grimoire within about 2 seconds, and a
   finished turn shows the flower field.
 - A blocked agent's member shows the `!` bubble and the card says `Needs help`.
+- The pane header shows the scene's strip. A working agent's member casts at the scene's monster, the
+  cast reaches it and it flinches. Split the tab and both members stand in both headers, the ring under
+  this pane's one; with three or more panes the golem appears. All idle: camp with a meal (by day) or
+  asleep by the embers (22:00–07:00). Done: a treasure chest.
 - On the hour the background moves to the next scene by itself, and clicking `Journey · Day N` moves
-  it on at once.
+  it on at once. The frames, gradients, accent, terminal tint, card stages and header strip change
+  with it, and seven moves bring back the starting scene with the file as it was.
+- In a window about 800px wide the tabs and the minimize / maximize / close buttons are still visible.
 - The fold button leaves a 64px rail of place tiles. Unfolding brings back the old width and the session
   lists.

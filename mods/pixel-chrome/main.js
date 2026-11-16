@@ -5,7 +5,7 @@
 // (its localStorage file, data/journey-chrome/store.json), so both layouts show the same day.
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { theme, run, props, window, shared, setShared, updates, layout, appHome, readTextFile, writeTextFile, checking } from "herdr";
+import { theme, run, props, window, shared, setShared, updates, layout, appHome, readTextFile, writeTextFile, checking, nextCommand } from "herdr";
 
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
 
@@ -33,25 +33,40 @@ function toggleSidebar() {
   run("layout.resize", { id: "sidebar", px: folding ? (window()?.platform === "macos" ? 92 : FOLDED) : (shared("pixel.sidebar.width") ?? 292) });
 }
 
-// Scenes: the layout's background takes turns through these, one per hour (backgrounds/frieren-pixel-<id>.png).
+// Scenes: the layout's background takes turns through these, one per hour (backgrounds/frieren-pixel-<id>.png),
+// and the whole palette follows: the root's theme color overrides ("colors"), the blocks' frames and gradients, and
+// the stage behind each sprite (shared "pixel.scene", read by pixel-party and pixel-pane).
 // The brand row's journey widget shows the scene's name and, clicked, moves on to the next (shared "pixel.scene.offset").
-// Herdr has no command for the background, so the brand row rewrites the layout file's background image path.
-const SCENES = [
-  ["night", "Starry Night Road"],
-  ["dawn-flowers", "Spring Dawn Meadow"],
-  ["meteor-night", "Meteor Shower"],
-  ["snow-north", "Northern Aurora"],
-  ["autumn-road", "Autumn Forest Road"],
-  ["mage-library", "Mage Library"],
-  ["lakeside-town", "Lakeside Town at Sunset"],
-];
+// Herdr has no command for a layout's background or colors, so the brand row rewrites the shown layout's file, and only
+// when that file's background is one of the scenes (a picture of your own stops the rotation).
+import { SCENES } from "./scenes.js";
 const SCENE_EVERY = 3600000;
 const SCENE_RE = /"image":\s*"backgrounds\/frieren-pixel-[a-z-]+\.png"/;
 const sceneIndex = () => {
   const n = Math.floor(Date.now() / SCENE_EVERY) + (Number(shared("pixel.scene.offset")) || 0);
   return ((n % SCENES.length) + SCENES.length) % SCENES.length;
 };
-const scenePath = (i) => `backgrounds/frieren-pixel-${SCENES[i][0]}.png`;
+const scenePath = (sc) => `backgrounds/frieren-pixel-${sc.id}.png`;
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const oneLine = (o) => `{ ${Object.entries(o).map(([k, v]) => `"${k}": "${v}"`).join(", ")} }`;
+
+// The layout file with scene `sc` painted in: block colors swapped role by role from whichever scene's colors the
+// file has now (hand-picked colors are left alone), the root "colors" line replaced or added after "theme", and
+// the background picture.
+function paint(text, sc) {
+  const count = (s) => Object.values(s.layout).filter((c) => text.toLowerCase().includes(`"${c.toLowerCase()}"`)).length;
+  const from = SCENES.reduce((best, s) => (count(s) > count(best) ? s : best), SCENES[0]);
+  let out = text;
+  if (count(from) > 0 && from !== sc) {
+    const map = new Map(Object.entries(from.layout).map(([role, c]) => [c.toLowerCase(), sc.layout[role]]));
+    const re = new RegExp(`"(${[...map.keys()].sort((a, b) => b.length - a.length).map(esc).join("|")})"`, "gi");
+    out = out.replace(re, (m, c) => `"${map.get(c.toLowerCase()) ?? c}"`);
+  }
+  const colors = `"colors": ${oneLine(sc.colors)}`;
+  if (/"colors":\s*\{[^{}]*\}/.test(out)) out = out.replace(/"colors":\s*\{[^{}]*\}/, colors);
+  else out = out.replace(/^([ \t]*)"theme":\s*"[^"]*",[ \t]*$/m, (line, indent) => `${line}\n${indent}${colors},`);
+  return out.replace(SCENE_RE, `"image": "${scenePath(sc)}"`);
+}
 
 const DAY = 86400000;
 const dayOf = (ms) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
@@ -85,12 +100,16 @@ export default class PixelChrome extends View {
     this.applying = false;
     cx.spawn(async (cx) => this.applyScene(cx));
     cx.timer.every(60000, (cx) => cx.spawn(async (cx) => this.applyScene(cx)));
+    // Key command "pixel-chrome.next-scene" (bind it in keys.json) does what clicking the journey day does.
+    cx.spawn(async (cx) => {
+      for (;;) if (String(await nextCommand()).endsWith("next-scene")) this.nextScene(cx);
+    });
   }
 
   // Puts the current scene into the shown layout's file, if that layout's background is one of the scenes.
   async applyScene(cx) {
-    const want = scenePath(sceneIndex());
-    if (this.applying || this.applied === want) return;
+    const sc = SCENES[sceneIndex()];
+    if (this.applying || this.applied === sc.id) return;
     const name = shared("layout");
     if (!name) return;
     this.applying = true;
@@ -98,8 +117,10 @@ export default class PixelChrome extends View {
       const file = `${appHome()}/layouts/${name}.json`;
       const text = await readTextFile(file);
       if (text && SCENE_RE.test(text)) {
-        if (!text.includes(`"${want}"`)) await writeTextFile(file, text.replace(SCENE_RE, `"image": "${want}"`), text);
-        this.applied = want;
+        const next = paint(text, sc);
+        if (next !== text) await writeTextFile(file, next, text);
+        this.applied = sc.id;
+        if (shared("pixel.scene") !== sc.id) setShared("pixel.scene", sc.id);
         cx.notify();
       }
     } catch {}
@@ -142,7 +163,7 @@ export default class PixelChrome extends View {
         .child(v_flex().gap(2)
           .child(div().font_family("Galmuri14").text_size(15).text_color(t.foreground).child("HERDR"))
           .child(h_flex().id("journey-days").gap(4).items_center().cursor_pointer().hover((s) => s.opacity(0.8))
-            .tooltip(`Journey began ${ymd(this.start)}\nScene: ${SCENES[sceneIndex()][1]} (changes every hour)\nClick: next scene`)
+            .tooltip(`Journey began ${ymd(this.start)}\nScene: ${SCENES[sceneIndex()].name} (changes every hour)\nClick: next scene`)
             .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
             .on_click((_e, cx) => this.nextScene(cx))
             .child(svg(ICON(night ? "moon" : "sun")).size(10).text_color(night ? "#c8d4ff" : t.accent))

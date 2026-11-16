@@ -215,7 +215,9 @@ export default class UsageGauge extends View {
       .items_center()
       .bg(t.chrome)
       .when(!accounts.length, (el) => el.child(div().text_size(11).text_color(t.dim).child(this.busy ? "Reading usage…" : "No usage data")))
-      .children([group("claude"), group("codex")].filter(Boolean))
-      .when(Boolean(resultsButton), (el) => el.child(resultsButton));
+      // In a narrow bar (a small window) the chips scroll sideways and the Results button stays in view.
+      .child(h_flex().id("ug-chips").flex_initial().min_w(0).h_full().gap(12).items_center().overflow_x_scrollbar()
+        .children([group("claude"), group("codex")].filter(Boolean)))
+      .when(Boolean(resultsButton), (el) => el.child(resultsButton.flex_none()));
   }
 }

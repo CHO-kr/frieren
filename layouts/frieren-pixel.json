@@ -93,7 +93,7 @@
               "id": "usage",
               "type": "block",
               "content": { "mod": "usage-gauge", "props": { "font": "Galmuri9", "size": 10 } },
-              "size": { "px": 912 },
+              "size": { "weight": 1 },
               "window_drag": true,
               "border": { "width": 2, "color": "#efe6c8" },
               "background": { "gradient": ["#22307cf2", "#0e1546f2"], "angle": 180 }
@@ -102,6 +102,7 @@
               "id": "tabs",
               "type": "block",
               "content": { "mod": "pixel-tabs" },
+              "size": { "weight": 1.3 },
               "window_drag": true,
               "border": { "width": 2, "color": "#efe6c8" },
               "background": { "gradient": ["#22307cf2", "#0e1546f2"], "angle": 180 }
@@ -186,6 +187,7 @@
   ],
   "background": { "image": "backgrounds/frieren-pixel-night.png", "fit": "cover" },
   "theme": "frieren-pixel",
+  "colors": { "background": "#0b1030c4", "foreground": "#f2ecd8", "muted": "#d2c9a8", "dim": "#a3a3d0", "accent": "#ffd36a", "accent_foreground": "#141a3c", "selection": "#3a3f8a", "selected": "#ffd36a2e", "working": "#86b4ff", "idle": "#8890bc", "chrome": "#121a4cf0", "surface": "#1a2462e6", "popover": "#151d50fa", "raised": "#28327e", "hover": "#fff4d01c", "border": "#7880c8", "input": "#3c4696", "ring": "#ffd36a", "ansi0": "#0b1030", "ansi8": "#6e74a8" },
   "ui_font": "Galmuri11",
   "terminal_opacity": 0.55,
   "terminal_padding": [12, 10],

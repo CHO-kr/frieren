@@ -4,7 +4,8 @@ Two Windows layouts for the [Herdr](https://herdr.dev) desktop app, made for run
 **Claude Code** and **Codex** accounts side by side, dressed as a fantasy party from *Frieren*:
 
 - **Frieren Pixel** (`frieren-pixel`, new): 16-bit pixel art. Every agent is a little pixel party
-  member who acts out what the agent is doing right now. The background scene changes every hour.
+  member who acts out what the agent is doing right now, and the panes of a tab fight, eat and sleep
+  together in a scene in the pane header. The background scene changes every hour, and the colors follow it.
 - **Frieren Journey** (`frieren-journey`): painted portraits and a Frieren wallpaper behind
   translucent terminals.
 
@@ -21,9 +22,9 @@ account's plan usage in the top bar, and the account and model on every pane. Pi
 ### The party acts out what each agent is doing
 
 The party reads each agent's screen every 1.5 seconds. When the agent starts a tool, its party
-member switches to that tool's motion, both on the card in the sidebar and on a wider stage in the
-pane header. The header also shows a battle line with the tool's detail, for example
-`Frieren casts a spell!  npm test`.
+member switches to that tool's motion, both on the card in the sidebar and in the pane header's scene
+(below). The header also shows a battle line with the tool's detail, for example
+`Frieren casts a spell! · vs Wyvern  npm test`.
 
 ![Every motion for Frieren, Stark and Heiter](docs/motions.gif)
 
@@ -42,6 +43,27 @@ pane header. The header also shows a battle line with the tool's detail, for exa
 Both Claude Code's lines (`● Bash(npm test)`, `Reading 1 file…`, `⎿ $ cmd`) and Codex's (`• Ran …`)
 are understood.
 
+### The pane header: the party together in one scene
+
+Each pane header opens with a 512×64 scene cut from the background picture itself (a 256×32 strip
+of its pixel art at the sprites' pixel size). Every pane of the tab sends its member into that scene, up to four, so a
+split tab shows its agents working side by side. When a tab has more than one pane, a gold ring marks
+this pane's member.
+
+![The pane header's scene in each situation](docs/header.gif)
+
+| The tab's agents… | The scene |
+|---|---|
+| any of them is working | a battle: the background's monster stands on the right, and a spell or sword wave flies all the way to it. It flashes and flinches as the hit lands. Three or more members face a stone golem instead |
+| one is done and none is working | the monster is gone and a treasure chest sparkles in its place |
+| all idle, by day | camp: a meal around the cooking pot, with speech bubbles of meat and hearts |
+| all idle, 22:00 to 07:00 | camp: asleep by the embers, with a bedroll in front of the tent |
+| a shell, not an agent | camp: standing by the fire |
+
+The monsters: Wyvern (Starry Night Road), Blue Slime (Spring Dawn Meadow), Will-o'-Wisp (Meteor
+Shower), Frost Wolf (Northern Aurora), Grumpy Stump (Autumn Forest Road), Mimic (Mage Library),
+Lake Serpent (Lakeside Town at Sunset) and the Stone Golem.
+
 ### Sixteen party members
 
 Each member's attack has its own style and color: mages fire bolts, warriors slash, priests throw
@@ -56,8 +78,13 @@ layouts.
 ### A new scene every hour
 
 Seven pixel-art scenes take turns as the background, one per hour. Click **Journey · Day N** in the
-top-left corner to skip to the next one, or hover it to see the current scene's name. Terminals are
-55% opaque, so the scene shows through softly and text stays readable.
+top-left corner to skip to the next one (or bind `pixel-chrome.next-scene` to a key), or hover it to
+see the current scene's name. Terminals are 55% opaque, so the scene shows through softly and text
+stays readable.
+
+The whole look follows the scene: the frames and panel gradients, the accent, the terminal tint, the
+party cards' little stages, the pane header's strip and its monster. Every scene keeps the same
+lightness, so text reads the same in all of them.
 
 ![The layout in each of the seven scenes](docs/scenes.gif)
 
@@ -73,11 +100,14 @@ The terminal is left empty in the animation above so each scene is easy to see.
 
 ### Also in Frieren Pixel
 
-- **Party cards**: the member on a small stage, `name · role`, a `Claude` / `Codex` tag, status
-  (Acting, Needs help, Done, Resting), account and model, and **HP** (what's left of the 5-hour limit)
-  and **MP** (what's left of the weekly limit) bars.
-- **Pane headers**: the member's stage, the battle line, the folder, the account, model and usage, and
+- **Party cards**, as tall as their 64px stage: the tab name and status (the motion while working:
+  Casting, Reading, Writing, …), the member with account and model and a `Claude` / `Codex` tag, and
+  **HP** (what's left of the 5-hour limit) and **MP** (what's left of the weekly limit) bars. Hover a
+  card for its battle line.
+- **Pane headers**: the scene above, the battle line, the folder, the account, model and usage, and
   pixel buttons to split, zoom and close.
+- **Small windows**: the usage bar shrinks and scrolls sideways, so the tabs and the window buttons
+  always stay in view.
 - **Tabs as inventory slots**, each with its member's pixel face and status.
 - **Spaces as destinations**: eight pixel place tiles (Royal Capital, Old Ruins, Flower Hill, Forest
   Camp, Rampart Watchtower, Town Street, Starlit Old Tree, Moonlit Castle) with the repo's branch and
@@ -215,7 +245,7 @@ Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spac
 | `Ctrl+Shift+L` | cycle layouts (yours, Frieren Pixel, Frieren Journey) |
 | Click a party card | focus that agent's terminal |
 | Rename a tab to `Fern`, `Stark`, … | that tab's agent becomes that character |
-| Click **Journey · Day N** (Frieren Pixel) | skip to the next background scene |
+| Click **Journey · Day N** (Frieren Pixel) | skip to the next background scene (its colors and monster come with it) |
 | Click a session in **Claude sessions** / **Codex sessions** | resume it in a new tab in its folder, or focus it if it's already open |
 | Right-click a session | continue with another account, hand over to the other agent, or hide it |
 | `Ctrl+Shift+S` | search every session. `Tab` switches filter, `↑`/`↓` move, `Enter` opens, `Esc` closes |
@@ -249,19 +279,26 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
 
 ## Customize
 
-- **Scenes (Frieren Pixel)**: the list and the interval are `SCENES` and `SCENE_EVERY` (one hour) at
-  the top of `mods/pixel-chrome/main.js`. Herdr has no command to change a background, so the brand row
-  rewrites the `background.image` line of `layouts/frieren-pixel.json` when the scene changes. Set
-  `background.image` to a picture of your own and the rotation stops.
+- **Scenes (Frieren Pixel)**: the interval is `SCENE_EVERY` (one hour) in `mods/pixel-chrome/main.js`;
+  the scenes and their palettes are `mods/pixel-chrome/scenes.js`, made by
+  `mods/pixel-party/build/palettes.py`. Herdr has no command to change a background or colors, so the
+  brand row rewrites `layouts/frieren-pixel.json` when the scene changes: the `background.image` line,
+  the root `colors` line, and the blocks' frame and gradient colors (colors you picked yourself are left
+  alone). Set `background.image` to a picture of your own and the rotation stops. To skip scenes from
+  the keyboard, add `"ctrl-alt-n": "pixel-chrome.next-scene"` to `keys.json`.
+- **The header scene**: where everyone stands and which monster each scene has are in
+  `mods/pixel-party/build/scene_art.py`, which also cuts the strips and builds the monster and prop
+  fonts; the rules (battle, treasure, camp, the night hours) are in `mods/pixel-pane/plan.js`.
 - **Wallpaper (Frieren Journey)**: replace `backgrounds/frieren.jpg` (same name), or change
   `background.image` in `layouts/frieren-journey.json`.
 - **Terminal see-through**: `terminal_opacity` in each layout (`0.55` in Pixel, `0.4` in Journey; `1`
   is solid, `0.2` shows the background clearly).
-- **Usage bar width**: the `usage` block has a fixed width: `912px` in Pixel (3 Claude and 5 Codex
-  accounts) and `818px` in Journey (2 Claude and 5 Codex). Allow about 78px per Claude chip, 104px per
-  Codex chip and 90px for the button.
+- **Usage bar width**: in Pixel the `usage` and `tabs` blocks share the top bar `1 : 1.3`, so a small
+  window shrinks both and the usage chips scroll. In Journey the `usage` block is a fixed `818px`
+  (2 Claude and 5 Codex). Allow about 78px per Claude chip, 104px per Codex chip and 90px for the button.
 - **Colors**: `themes/frieren-pixel.json` and `themes/frieren-journey.json`. The alpha in `chrome`,
-  `surface`, `popover` and `background` controls how translucent each part is.
+  `surface`, `popover` and `background` controls how translucent each part is. In Pixel the scene's
+  palette (`colors` in the layout) wins over the theme while the scenes rotate.
 - **Who plays whom**: characters are handed out in roster order and each tab keeps its own.
   Name a tab after a character, or map tab names in `mods/journey-party/jobs.json`:
   `{ "api": "stark", "docs": "fern" }`.
@@ -284,8 +321,8 @@ These mods are trusted code that runs on your machine. Before installing, know t
   (usage and profile; never printed, stored or refreshed), and the Codex app-server talks to OpenAI.
   Nothing else goes out. What the party reads from agent screens stays on your machine.
 - **write** caches to `%LOCALAPPDATA%\herdr-sessions`, `%LOCALAPPDATA%\herdr-claude-sessions` and
-  `~/.config/herdr-app/.thumbs`. Frieren Pixel also rewrites the background line of its own layout
-  file once an hour.
+  `~/.config/herdr-app/.thumbs`. Frieren Pixel also rewrites the background and color lines of its
+  own layout file once an hour.
 
 Spending a Codex reset pass is permanent. It always asks for confirmation first.
 
@@ -319,8 +356,10 @@ layouts/frieren-pixel.json      Frieren Pixel (and frieren-pixel.png, its settin
 layouts/frieren-journey.json    Frieren Journey (and frieren-journey.png)
 themes/                         frieren-pixel (deep navy and cream) and frieren-journey (navy and gold)
 backgrounds/                    seven 2560×1440 pixel scenes and the Journey wallpaper
-mods/pixel-*                    the five Frieren Pixel mods: sprite fonts, faces, tiles, icons, Galmuri fonts
-mods/pixel-party/build/         scripts and cut sprites that build the sprite fonts
+mods/pixel-*                    the five Frieren Pixel mods: sprite, monster and prop fonts, faces, tiles,
+                                icons, Galmuri fonts, the scenes' palettes (pixel-chrome/scenes.js), the
+                                header strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
+mods/pixel-party/build/         scripts and cut sprites that build all of the above
 mods/journey-*                  the four Frieren Journey mods (with their pictures)
 mods/ (the rest)                eight tool mods both layouts use
 keys.json                       the key bindings to merge
@@ -342,8 +381,9 @@ you hold the rights to one of them and want it removed, please open an issue.
 
 | File | Source |
 |---|---|
-| `mods/pixel-party/build/spr/*.npz`, `mods/pixel-party/fonts/FrierenDot3-*.ttf`, `mods/pixel-party/faces/*.png` | pixel sprites cut from pose sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_all.ps1`), then grid-snapped and animated by the build scripts |
-| `backgrounds/frieren-pixel-*.png`, `mods/pixel-spaces/art/*.png` | made with OpenAI image generation (through Codex), then reduced to a 64-color pixel grid |
+| `mods/pixel-party/build/spr/*.npz`, `mods/pixel-party/fonts/FrierenDot4-<name>.ttf`, `mods/pixel-party/faces/*.png` | pixel sprites cut from pose sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_all.ps1`), then grid-snapped and animated by the build scripts |
+| `mods/pixel-party/build/spr_scene/*.npz`, `mods/pixel-party/fonts/FrierenDot4-monsters.ttf`, `-props.ttf` | monsters and camp props cut from two sheets made with OpenAI image generation (through Codex; the prompts are in `build/gen_scene.ps1`), halved and animated by `build/scene_art.py` |
+| `backgrounds/frieren-pixel-*.png`, `mods/pixel-spaces/art/*.png`, `mods/pixel-party/scenes/*.png` | made with OpenAI image generation (through Codex), then reduced to a 64-color pixel grid; the header strips are 256×32 cuts of the backgrounds at half their art resolution |
 | `backgrounds/frieren.jpg` | composed from a Frieren portrait found on Pinterest (artist unknown) |
 | `mods/journey-party/cards/*.png`, `faces/*.png` | character images from [AniList](https://anilist.co/anime/154587) (anime 154587), resized; faces are square crops |
 | `mods/journey-spaces/art/capital.jpg` | [wallhaven x6kxyd](https://wallhaven.cc/w/x6kxyd) |
@@ -355,8 +395,8 @@ you hold the rights to one of them and want it removed, please open an issue.
 | `mods/journey-spaces/art/tree.jpg` | [wallhaven gpl8d3](https://wallhaven.cc/w/gpl8d3) |
 | `mods/journey-spaces/art/moon.jpg` | [wallhaven 9omppk](https://wallhaven.cc/w/9omppk) |
 
-The magic effects, stage backdrops and pixel icons are drawn by code for Frieren Pixel
-(`mods/pixel-party/build/anim.py`, `backdrop.py`, `assets.py`). The magic circle, sparkle, grimoire and
+The magic effects, flames, steam, speech bubbles, stage backdrops and pixel icons are drawn by code for
+Frieren Pixel (`mods/pixel-party/build/anim.py`, `scene_art.py`, `backdrop.py`, `assets.py`). The magic circle, sparkle, grimoire and
 quill icons were drawn for Frieren Journey. The pixel font is [Galmuri](https://github.com/quiple/galmuri)
 by Lee Minseo (quiple), under the SIL Open Font License 1.1 (`LICENSES/OFL-1.1-Galmuri.txt`). Some mods
 are modified copies of Apache-2.0 licensed code; [`NOTICE`](NOTICE) lists them, and the license text is
@@ -375,9 +415,16 @@ in `LICENSES/`.
 - **일하는 대로 움직이는 캐릭터:** 에이전트마다 픽셀 캐릭터가 붙고, 지금 쓰는 도구에 따라 동작이
   바뀌어요. 명령 실행은 마법·검격·성스러운 빛, 파일 읽기는 마도서, 편집은 룬 새기기, 웹 검색은
   비행 마법, 서브에이전트는 소환이에요. 답을 기다리면 `!`, 끝나면 꽃밭에서 뛰고, 쉬면 `Zzz`예요.
+- **창 헤더의 장면:** 배경 그림에서 잘라 낸 가로 띠 위에 탭의 창(pane)마다 캐릭터가 모여요(최대 4명).
+  누가 일하면 그 배경의 몬스터와 함께 싸우고, 마법·검기가 몬스터까지 날아가 맞으면 몬스터가 번쩍여요.
+  3명 이상이면 돌 골렘이 나와요. 끝나면 보물상자, 모두 쉬면 캠프에서 같이 밥을 먹고(낮), 밤(22시~7시)에는
+  모닥불 옆에서 같이 자요. 창이 여러 개면 이 창의 캐릭터 발밑에 금색 고리가 생겨요.
 - **캐릭터 16명:** 마법사, 전사, 성직자가 저마다 다른 색과 모양의 공격을 써요.
 - **1시간마다 바뀌는 배경 7장:** 별밤 길, 봄 새벽 꽃밭, 유성우, 북쪽 오로라, 가을 숲길, 마법 도서관,
-  노을 진 호숫가 마을. 왼쪽 위 **Journey · Day N**을 누르면 다음 배경으로 넘어가요.
+  노을 진 호숫가 마을. 테두리·패널·강조색·터미널 색·몬스터까지 배경에 맞춰 바뀌어요. 왼쪽 위
+  **Journey · Day N**을 누르면 다음 배경으로 넘어가요.
+- **작은 창에서도:** 사용량 막대가 줄어들고 옆으로 넘겨 볼 수 있어서, 탭과 창 버튼(최소화·최대화·닫기)이
+  항상 보여요. 파티 카드는 HP·MP 위를 두 줄로 줄였어요.
 - **픽셀 화면:** 탭은 인벤토리 칸, 스페이스는 픽셀 여행지 그림이에요. 사이드바는 64px로 접을 수
   있고, 글꼴은 갈무리(Galmuri)예요.
 

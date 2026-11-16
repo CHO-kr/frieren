@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { agents, spaces, panes, run, openOverlay, theme, window, shared, setShared, layout, settings, appHome, readTextFile } from "herdr";
-import { character, facePath, entriesFor, settle } from "./lib.js";
+import { character, facePath, entriesFor, settle, alpha } from "./lib.js";
 
 const JOBS_FILE = `${appHome()}/mods/journey-party/jobs.json`;
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
@@ -75,7 +75,7 @@ export default class PixelTabs extends View {
       const name = /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const ch = character(picks[`tab:${c.id}`]);
       return h_flex().id(`tab-${c.id}`).h(44).pl(2).pr(9).gap(7).items_center().flex_none()
-        .border(2).border_color(c.active ? t.accent : "#7880c870").bg(c.active ? "#ffd36a1c" : "#0b10306b").text_color(c.active ? t.foreground : t.muted)
+        .border(2).border_color(c.active ? t.accent : alpha(t.border, "70")).bg(c.active ? alpha(t.accent, "1c") : alpha(t.background, "6b")).text_color(c.active ? t.foreground : t.muted)
         .hover((s) => s.bg(t.hover))
         .tooltip(ch ? `${name} · ${ch.name} (${ch.role})` : name)
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
@@ -104,13 +104,14 @@ export default class PixelTabs extends View {
     this.syncPanel(space, panel, body, enabled);
     const panelButton = (id, label, icon) => {
       const on = panel && !panel.hidden && body?.active === id;
-      return h_flex().id(`panel-${id}`).h(30).px(9).gap(6).flex_none().items_center()
-        .border(2).border_color(on ? t.accent : "#7880c870").bg(on ? t.selected : "#0b10306b").text_color(on ? t.foreground : t.muted)
+      // In a narrow bar these give way after the tabs (the label goes, the icon stays); the window buttons never do.
+      return h_flex().id(`panel-${id}`).h(30).px(9).gap(6).flex_shrink(1).min_w(38).overflow_hidden().items_center().tooltip(label)
+        .border(2).border_color(on ? t.accent : alpha(t.border, "70")).bg(on ? t.selected : alpha(t.background, "6b")).text_color(on ? t.foreground : t.muted)
         .hover((s) => s.bg(t.hover)).on_mouse_down("left", stop)
         .on_click(() => {
           if (on) run("layout.hide", { id: "panel" });
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
-        }).child(svg(icon).size(16).flex_none().text_color(t.accent)).child(label);
+        }).child(svg(icon).size(16).flex_none().text_color(t.accent)).child(div().min_w(0).truncate().child(label));
     };
     return h_flex().size_full().min_w(0).pr(6).pl(lightsPadding).gap(5).items_center().text_size(12)
       .on_mouse_up("left", () => { this.pressed = null; })

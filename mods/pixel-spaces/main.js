@@ -15,6 +15,8 @@ const PLACES_FILE = `${appHome()}/mods/journey-spaces/places.json`;
 const placeOf = (name, places) => (PLACE_IDS.includes(places[name]) ? places[name] : PLACE_IDS[[...name].reduce((n, c) => n + c.codePointAt(0), 0) % PLACE_IDS.length]);
 const placeFor = (name, places) => `mods/pixel-spaces/art/${placeOf(name, places)}.png`;
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
+// Theme colors follow the background scene (pixel-chrome writes them into the layout); this adds an alpha.
+const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -343,7 +345,7 @@ export default class Spaces extends View {
       .flex_none()
       .justify_center()
       .border(2)
-      .when(on, (el) => el.bg("#ffd36a14").border_color(t.accent))
+      .when(on, (el) => el.bg(alpha(t.accent, "14")).border_color(t.accent))
       .when(!on, (el) => el.border_color("#00000000").hover((s) => s.bg(t.hover)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
@@ -378,7 +380,7 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg(ICON("branch")).size(12).text_color(t.dim)))
-          .when(!tree, el => el.child(div().id(`place-${w.id}`).size(68).flex_none().border(2).border_color(on ? t.accent : "#7880c880")
+          .when(!tree, el => el.child(div().id(`place-${w.id}`).size(68).flex_none().border(2).border_color(on ? t.accent : alpha(t.border, "80"))
             .tooltip(PLACES[placeOf(w.name, this.places)])
             .child(image(placeFor(w.name, this.places)).size(64))))
           .child(v_flex().flex_1().min_w(0).gap(3)
@@ -401,13 +403,13 @@ export default class Spaces extends View {
       .flex_none()
       .mx_auto()
       .border(2)
-      .border_color(w.active ? t.accent : "#7880c880")
+      .border_color(w.active ? t.accent : alpha(t.border, "80"))
       .hover((s) => s.border_color(t.accent))
       .tooltip(`${w.name} · ${PLACES[placeOf(w.name, this.places)]}`)
       .on_click(() => run("space.select", { id: w.id }))
       .child(image(placeFor(w.name, this.places)).size(36).when(!w.active, (el) => el.opacity(0.75)))
       .when(w.status === "working" || w.status === "blocked" || w.status === "done", (el) => el.child(div().absolute().right(0).bottom(0).size(8)
-        .bg(tone(t, w.status)).border(1).border_color("#0b1030")));
+        .bg(tone(t, w.status)).border(1).border_color(alpha(t.background, ""))));
   }
 
   render() {
@@ -426,7 +428,7 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     return v_flex().size_full().min_h(0).text_size(12)
-      .child(h_flex().h(28).flex_none().pl(10).pr(6).gap(6).items_center().border_b(2).border_color("#7880c860")
+      .child(h_flex().h(28).flex_none().pl(10).pr(6).gap(6).items_center().border_b(2).border_color(alpha(t.border, "60"))
         .when(!collapsed, el => el.child(svg(ICON("chevron-right")).size(12).text_color(t.accent)).child(div().text_color(t.accent).child("SPACES"))
           .child(div().font_family("Galmuri9").text_size(10).text_color(t.muted).child("DESTINATIONS")))
         .child(div().flex_1())
