@@ -352,7 +352,7 @@ waves (each kind of work its own move, normal attacks in between, and each chara
 move when its SP gauge fills), celebrate when one is done, and pass the time at camp when all rest. Seven pixel
 scenes take turns as the background, one per hour, and the whole palette follows the scene.
 
-![Frieren Pixel](docs/pixel.png)
+![Frieren Pixel](docs/frieren-pixel.png)
 
 ## What's different
 

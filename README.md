@@ -14,7 +14,7 @@ Both share the same tools underneath: every saved Claude and Codex session one c
 account's plan usage in the top bar, and the account and model on every pane. Pick one in
 **Settings → Look → Layout**, or cycle with `Ctrl+Shift+L`.
 
-![Frieren Pixel layout in Herdr](docs/pixel.png)
+![Frieren Pixel layout in Herdr](docs/frieren-pixel.png)
 
 > Windows 10/11 only. The UI text is English.
 
