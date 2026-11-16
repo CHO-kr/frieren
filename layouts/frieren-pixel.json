@@ -1,0 +1,195 @@
+{
+  "id": "root",
+  "type": "row",
+  "padding": 8,
+  "gap": 8,
+  "resizable": false,
+  "children": [
+    {
+      "id": "sidebar",
+      "type": "column",
+      "size": { "px": 292 },
+      "min": 64,
+      "max": 480,
+      "gap": 8,
+      "resizable": false,
+      "children": [
+        {
+          "id": "brand",
+          "type": "block",
+          "content": { "mod": "pixel-chrome" },
+          "size": { "px": 52 },
+          "window_drag": true,
+          "border": { "width": 2, "color": "#efe6c8" },
+          "background": { "gradient": ["#22307cf2", "#0e1546f2"], "angle": 180 }
+        },
+        {
+          "id": "sidebar-lists",
+          "type": "column",
+          "gap": 8,
+          "children": [
+            {
+              "id": "spaces",
+              "type": "block",
+              "content": { "mod": "pixel-spaces" },
+              "size": { "weight": 0.6 },
+              "min": 110,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
+            },
+            {
+              "id": "agents",
+              "type": "block",
+              "content": { "mod": "pixel-party" },
+              "size": { "weight": 2.0 },
+              "min": 140,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
+            },
+            {
+              "id": "claude-sessions",
+              "type": "block",
+              "content": { "mod": "claude-sessions" },
+              "size": { "weight": 0.9 },
+              "min": 120,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
+            },
+            {
+              "id": "codex-sessions",
+              "type": "block",
+              "content": { "mod": "codex-sessions" },
+              "size": { "weight": 0.9 },
+              "min": 120,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
+            }
+          ]
+        },
+        {
+          "id": "sidebar-footer",
+          "type": "block",
+          "content": { "mod": "pixel-chrome", "props": { "footer": true } },
+          "size": { "px": 64 },
+          "border": { "width": 2, "color": "#efe6c8" },
+          "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "type": "column",
+      "gap": 8,
+      "resizable": false,
+      "children": [
+        {
+          "id": "topbar",
+          "type": "row",
+          "size": { "px": 56 },
+          "gap": 8,
+          "resizable": false,
+          "children": [
+            {
+              "id": "usage",
+              "type": "block",
+              "content": { "mod": "usage-gauge", "props": { "font": "Galmuri9", "size": 10 } },
+              "size": { "px": 912 },
+              "window_drag": true,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#22307cf2", "#0e1546f2"], "angle": 180 }
+            },
+            {
+              "id": "tabs",
+              "type": "block",
+              "content": { "mod": "pixel-tabs" },
+              "window_drag": true,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#22307cf2", "#0e1546f2"], "angle": 180 }
+            },
+            {
+              "id": "smart-paste",
+              "type": "block",
+              "content": { "mod": "smart-paste" },
+              "size": { "px": 0 }
+            }
+          ]
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "gap": 8,
+          "children": [
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "header": {
+                    "content": { "mod": "pixel-pane" },
+                    "reveal": "always",
+                    "height": 72,
+                    "position": "top"
+                  },
+                  "border": { "width": 2, "color": "#efe6c8a8" },
+                  "focus": { "width": 2, "color": "#ffd36a" },
+                  "radius": 0,
+                  "gap": 8,
+                  "lone": true
+                }
+              }
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "children": [
+                    { "id": "files", "type": "block", "content": { "mod": "files" } },
+                    { "id": "changes", "type": "block", "content": { "mod": "changes" } }
+                  ],
+                  "active": "files"
+                }
+              ],
+              "size": { "px": 368 },
+              "min": 280,
+              "max": 900,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 },
+              "hidden": true
+            },
+            {
+              "id": "results",
+              "type": "block",
+              "content": { "mod": "results-panel" },
+              "size": { "px": 400 },
+              "min": 280,
+              "max": 900,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 },
+              "hidden": true
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "type": "block",
+          "content": { "mod": "workspace-status" },
+          "size": { "px": 28 },
+          "border": { "width": 2, "color": "#efe6c8" },
+          "background": "#0c123ff0"
+        }
+      ]
+    }
+  ],
+  "background": { "image": "backgrounds/frieren-pixel-night.png", "fit": "cover" },
+  "theme": "frieren-pixel",
+  "ui_font": "Galmuri11",
+  "terminal_opacity": 0.55,
+  "terminal_padding": [12, 10],
+  "titlebar": "none",
+  "traffic_lights": [20, 26],
+  "preview": "layouts/frieren-pixel.png"
+}

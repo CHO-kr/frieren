@@ -1,4 +1,4 @@
-Frieren Journey layout for Herdr
+Frieren Journey and Frieren Pixel layouts for Herdr
 
 mods/journey-chrome, mods/journey-spaces, mods/journey-tabs and mods/journey-party are modified
 copies of the traveler-chrome, traveler-spaces, traveler-tabs and traveler-agents mods of the
@@ -11,5 +11,14 @@ Changes in the journey mods: Frieren characters and places instead of Traveler's
 HP/MP bars from the usage-gauge readings, the account, model and resumed session title on each
 card, a "Journey · Day N" counter, and Windows window buttons. The license text is in
 LICENSES/Apache-2.0.txt.
+
+mods/pixel-chrome, mods/pixel-spaces, mods/pixel-tabs and mods/pixel-party are modified copies of
+the journey mods above, and mods/pixel-pane of mods/pane-account. Changes: pixel-art drawing
+(sprite fonts, pixel icons and tiles, square frames), animated party members that act out what each
+agent is doing, background scenes that change every hour, and a foldable sidebar rail.
+
+mods/pixel-chrome/fonts/Galmuri*.ttf are Galmuri by Lee Minseo (quiple), under the SIL Open Font
+License 1.1 (mods/pixel-chrome/fonts/LICENSE-Galmuri-OFL.txt, also in LICENSES/OFL-1.1-Galmuri.txt).
+They are not covered by the Apache License.
 
 Images are not covered by the Apache License. See "Credits" in README.md.

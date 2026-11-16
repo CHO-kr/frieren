@@ -1,10 +1,12 @@
 // Plan usage of every Claude and Codex account, as small gauges in the top bar. A Claude account
 // shows its weekly limit; a Codex account its plan's windows (fullest percent, a thin bar each).
 // Hovering tells every window and when it resets, a click reads again. usage.py reads, every 5 minutes.
+// Props (optional): { "font": "Galmuri9", "size": 10 } sets the chips' font and size; a wide pixel font
+// otherwise runs the name into the percent ("claude2" + "29%"), as in frieren-pixel.
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout } from "herdr";
+import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout, props } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -164,7 +166,9 @@ export default class UsageGauge extends View {
         .tooltip(tip)
         .child(h_flex()
           .justify_between()
-          .text_size(10.5)
+          .gap(4)
+          .when(Boolean(props()?.font), (el) => el.font_family(props().font))
+          .text_size(props()?.size ?? 10.5)
           .child(div().truncate().text_color(a.warning ? t.working : a.stale ? t.dim : t.muted).child(a.warning ? `${a.name}!` : a.name))
           .child(a.login_needed
             ? div().font_medium().text_color(t.working).child("login")
@@ -172,7 +176,7 @@ export default class UsageGauge extends View {
         .when(!money, (el) => el.children(windows.slice(0, 2).map((w) => bar(w, width - 12))))
         .when(Boolean(money), (el) => el.child(h_flex().gap(5).items_center()
           .child(div().flex_1().min_w(0).children(windows.slice(0, 1).map((w) => bar(w, 44))))
-          .child(div().flex_none().text_size(9.5).text_color(a.stale ? t.dim : t.muted).child(money))));
+          .child(div().flex_none().when(Boolean(props()?.font), (el) => el.font_family(props().font)).text_size(props()?.size ?? 9.5).text_color(a.stale ? t.dim : t.muted).child(money))));
     };
 
     const accounts = this.data?.accounts ?? [];

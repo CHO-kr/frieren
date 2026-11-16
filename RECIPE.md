@@ -9,7 +9,10 @@ shows each account's plan usage as small gauges. Every pane header says which ac
 agent runs on. A results panel shows the newest files in the focused terminal's folder, with
 thumbnails. UI text is English.
 
-![Frieren Journey](preview.png)
+![Frieren Journey](docs/journey.png)
+
+This file describes Frieren Journey first. [Frieren Pixel](#frieren-pixel) at the end is built on top
+of it and lists only what differs.
 
 ## What you see
 
@@ -329,3 +332,105 @@ at the same paths if you like.
   agent's prompt.
 - With only a screenshot on the clipboard, Ctrl+V in Claude Code adds an attached image.
 - Folding the sidebar (Ctrl+Shift+B) leaves a column of faces; unfolding brings the cards back.
+
+# Frieren Pixel
+
+The same workspace drawn as a 16-bit RPG. Every agent is a pixel party member on a little stage, acting
+out the tool the agent is running. Seven pixel scenes take turns as the background, one per hour.
+
+![Frieren Pixel](docs/pixel.png)
+
+## What's different
+
+**Files**: `layouts/frieren-pixel.json` (+ `frieren-pixel.png`), `themes/frieren-pixel.json`,
+`backgrounds/frieren-pixel-<scene>.png` (7 scenes, 512×288 art shown ×5 at 2560×1440, 64 colors), and
+five mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`. The eight tool mods
+are the same. The pixel mods also read `mods/journey-party/jobs.json`, `mods/journey-spaces/places.json`
+and run `mods/pane-account/who.py`, so the journey mods must be installed too.
+
+**Node tree**: like Journey's, with these changes. `root` row padding 8, gap 8. `sidebar` column 292px
+(min 64, max 480, gap 8): `brand` (`pixel-chrome`, 52px), `spaces` (`pixel-spaces`, weight 0.6),
+`agents` (`pixel-party`, weight 2), `claude-sessions`, `codex-sessions` (0.9 each), `sidebar-footer`
+(`pixel-chrome` props `{footer: true}`, 64px). `topbar` row 56px, gap 8: `usage` (`usage-gauge` props
+`{font: "Galmuri9", size: 10}`, 912px), `tabs` (`pixel-tabs`), `smart-paste` (0px). `main` pane:
+header `pixel-pane`, height 72, border 2px `#efe6c8a8`, focus 2px `#ffd36a`, radius 0, gap 8. Every
+block has a 2px `#efe6c8` border and a 180° gradient: `#22307cf2 → #0e1546f2` for the brand row and the
+top bar, `#1c2a74f0 → #0c123ff0` for the rest. Root: `background` `{image:
+"backgrounds/frieren-pixel-night.png", fit: "cover"}`, `theme: "frieren-pixel"`, `ui_font: "Galmuri11"`,
+`terminal_opacity: 0.55`, `terminal_padding: [12, 10]`, `titlebar: "none"`, `traffic_lights: [20, 26]`.
+
+**Fonts**: `mods/pixel-chrome/fonts/` holds Galmuri11 (+ Bold), Galmuri9 and Galmuri14 (SIL OFL 1.1).
+Herdr loads a mod's `fonts/` at start. Sizes that render on the pixel grid: Galmuri9 at 10px,
+Galmuri11 at 12px, Galmuri14 at 15px.
+
+**Sprites**: each character is one COLRv0 color font, `mods/pixel-party/fonts/FrierenDot3-<id>.ttf`,
+family `FrierenDot3 <Name>`. One glyph is one animation frame, 32 art pixels tall: stage frames are 80
+wide from U+E000, card frames 36 wide from U+E400. They are drawn with `text_size(64)`,
+`line_height(1)` and `.frames(list, ms)`, so one art pixel is 2×2 screen pixels. The animations
+(first stage codepoint, frames, ms per frame):
+
+| Motion | Codepoint | Frames | ms | When |
+|---|---|---|---|---|
+| `rest` | E000 | 4 | 450 | idle |
+| `stand` | E004 | 2 | 650 | no status |
+| `think` | E006 | 4 | 170 | working, no tool on screen |
+| `cast` | E00A | 12 | 90 | Bash, PowerShell, Shell, Run, Exec, Monitor |
+| `read` | E016 | 6 | 220 | Read, Grep, Glob, Search, List, Found, Skill |
+| `write` | E01C | 8 | 150 | Edit, Write, Update, Create, NotebookEdit, apply_patch |
+| `fly` | E024 | 6 | 140 | WebSearch, WebFetch, Fetch, browsing, web.run |
+| `summon` | E02A | 8 | 130 | Agent, Task, Explore, Plan, subagents |
+| `alert` | E032 | 2 | 380 | blocked |
+| `victory` | E034 | 8 | 170 | done |
+
+A stage sits on `backdrop-stage.png` (160×64) or `backdrop-solo.png` (72×64), at 70% opacity when idle.
+`mods/pixel-party/build/` rebuilds the fonts from the cut sprites in `build/spr/<id>.npz`
+(`python anim.py <spr> <fonts> <faces> <manifest.json>`). Each glyph's `hmtx` left side bearing must
+equal its `xMin`, or Windows shifts each color layer on its own and the sprite gets holes. Herdr keeps a
+loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` and all three `lib.js`).
+
+**Mods**:
+- `pixel-party` (`main.js`, `lib.js`, `faces/`, `fonts/`, backdrops, `build/`): the party list. Every
+  1.5s it runs `hc read <terminal>` for each agent and `classify()` (in `lib.js`) turns the last tool line
+  into `{kind, detail}`. It understands Claude Code's `● Tool(args)`, collapsed groups (`Reading 1 file…`;
+  a finished group like `Read 1 file, ran 2 shell commands` means thinking again), `⎿ $ cmd`, and Codex's
+  `•` lines. It shares `pixel.activity` (`{terminal: {kind, detail}}`). A card: the member on the
+  36×32 stage, tab or session title, status (Acting / Needs help / Done / Resting), `name · role`, a
+  `Claude`/`Codex` tag, the battle line, `account · model`, HP and MP bars. Header: `PARTY N members`,
+  `N acting`, `N need help`.
+- `pixel-pane` (`main.js`, `lib.js`): the 72px pane header. The member on the 80×32 stage, the battle
+  line (`Frieren casts a spell!`) with the tool's detail, the folder, `account · model · weekly N%`,
+  `Needs you` / `Done` chips, and Split right / Split down / Zoom / Close buttons.
+- `pixel-tabs` (`main.js`, `lib.js`): tabs as inventory slots with the member's 36px pixel face and
+  status, then the + menu, Files / Changes buttons and the window buttons.
+- `pixel-spaces` (`main.js`, `art/<place>.png`, 32×32 art at 64px): `SPACES · DESTINATIONS`. Each
+  space is a place (Royal Capital, Old Ruins, Flower Hill, Forest Camp, Rampart Watchtower, Town Street,
+  Starlit Old Tree, Moonlit Castle) with branch and ahead/behind. When the sidebar is folded it draws a
+  36px tile per space, gold-framed when active, with a status pip.
+- `pixel-chrome` (`main.js`, `icons/` 8×8 pixel SVGs, `fonts/`): the brand row (Frieren's face,
+  `HERDR`, `Journey · Day N`, search, fold) and the footer (Settings, Add machine). The day counts from
+  the earlier of its own start and `data/journey-chrome/store.json`, so both layouts agree. Folding saves
+  the width in shared `pixel.sidebar.width`, hides the two session lists and resizes `sidebar` to 64px.
+- `lib.js` is the same file in `pixel-party`, `pixel-tabs` and `pixel-pane`: change all three. It
+  holds `ROSTER` (16 characters with name, role, color and attack style: `bolt`, `slash`, `holy`),
+  `ANIMS`, `battleLine` and `classify`. Character picks are shared with Journey (`journey.party`).
+
+**Scenes**: `pixel-chrome`'s brand row picks scene `(floor(now / SCENE_EVERY) + offset) mod 7` from
+`SCENES` (`night`, `dawn-flowers`, `meteor-night`, `snow-north`, `autumn-road`, `mage-library`,
+`lakeside-town`), with `SCENE_EVERY` one hour and `offset` in shared `pixel.scene.offset` (clicking
+`Journey · Day N` adds one). Once a minute it reads the shown layout's file and, only if its
+`"image"` is one of `backgrounds/frieren-pixel-*.png`, writes the new path with `writeTextFile`. Herdr
+has no command for a layout's background, and a layout-file edit is applied live. The footer copy
+doesn't rotate.
+
+## Done when (Frieren Pixel)
+
+- `herdr-app check` passes for the five `pixel-*` folders, and `layout.switch {name: "frieren-pixel"}`
+  shows the pixel scene through 55%-opaque terminals, Galmuri text everywhere, and 2px cream frames.
+- An agent running `npm test` shows its member casting on the card and in the pane header, with
+  `… casts a spell!  npm test`. Reading a file switches to the grimoire within about 2 seconds, and a
+  finished turn shows the flower field.
+- A blocked agent's member shows the `!` bubble and the card says `Needs help`.
+- On the hour the background moves to the next scene by itself, and clicking `Journey · Day N` moves
+  it on at once.
+- The fold button leaves a 64px rail of place tiles. Unfolding brings back the old width and the session
+  lists.
