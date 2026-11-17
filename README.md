@@ -14,6 +14,11 @@ and your Herdr terminals stop being two separate worlds:
   and Codex sessions started in Herdr tabs, with every account, and keeps them after the tab is
   closed. Copies you make in Herdr of an app session, and sessions from another terminal, go back to
   the Claude or Codex list, next to where they came from.
+- **Sessions follow your spaces.** Give each kind of work a Herdr space (Work, Projects, Tools, …)
+  and the lists show the shown space's sessions, sorted by what was said in them; a session opens in
+  its own space. Optional: without a `spaces.json` every list shows everything.
+- **Back in the desktop app.** Sessions you continue or start in Herdr with your main Claude account
+  run with Remote Control, so they also show in the Claude desktop app, where you can carry on.
 - **Switch freely.** Continue any session with another account, hand it from Claude to Codex or
   back, and find any of them with `Ctrl+Shift+S`.
 - **Every account at a glance.** Each Claude and Codex account's plan usage sits in the top bar, a ★
@@ -240,11 +245,25 @@ The terminal is left empty in the animation above so each scene is easy to see.
   under the tabs' processes every 30 seconds and keeps them after the tab closes. `All · Claude ·
   Codex` filters; a click goes to the session's tab, or resumes it in a new one with the account that
   made it; right-click for another account, a copy, or to hide it.
+- **Sessions sorted into your spaces** (optional, see [Customize](#customize)): with a `spaces.json`,
+  every session in the three lists is sorted into one of your Herdr spaces by the words of its
+  conversation (its title counts most) and by its folder. While one of those spaces is shown, each
+  list keeps that space's sessions and any open in its tabs, and folds the ones that fit nowhere under
+  `Not sorted`. The chip in each header (the space's name, or `All spaces`) switches between the two.
+  Right-click → **Space** puts a session where you want it (`Sort by its words` undoes that). A click
+  opens a session in its own space, and makes the space again if you closed it. Without `spaces.json`
+  nothing changes: every session is listed and opens in the shown space.
+- **Remote Control for the main Claude account**: a session the Herdr sessions panel resumes with the
+  plain `claude` account starts with `--remote-control` under its title, and a new `claude` from the
+  `+` menu starts with Remote Control too (named `herdr-…` until Claude titles it after your first
+  message), so both show in the Claude desktop app's list as connected. Sessions from the desktop app
+  are connected already. `claude2`, `claude3`, … are other logins and are left alone.
 - **Switch accounts or agents per session**: right-click a session to continue it with another
   account, or hand it to the other agent (Claude → Codex, Codex → Claude). Handed-over pairs are
   remembered (`⇄`), and later moves pass on only the new turns.
-- **Session search** (`Ctrl+Shift+S`): a popup that searches every session by title and folder, with
-  All / Herdr / Claude / Codex filters (one per list) and keyboard navigation.
+- **Session search** (`Ctrl+Shift+S`): a popup that searches every session by title, folder and space
+  (each row says its space), with All / Herdr / Claude / Codex filters (one per list) and keyboard
+  navigation.
 - **Usage gauges**: one chip per account in the top bar with its weekly or 5-hour usage, colored by how
   full it is (blue → yellow at 70% → red at 90%). Codex chips also show credits and free reset passes.
   Hover for every window and its reset time. Click to refresh.
@@ -348,7 +367,8 @@ Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spac
 | Rename a tab to `Fern`, `Stark`, … | that tab's agent becomes that character |
 | Click **Journey · Day N** (Frieren Pixel) | skip to the next background scene (its colors and monster come with it) |
 | Click a session in **Herdr sessions** / **Claude sessions** / **Codex sessions** | resume it in a new tab in its folder, or focus it if it's already open |
-| Right-click a session | continue with another account, hand over to the other agent, or hide it |
+| Right-click a session | continue with another account, hand over to the other agent, hide it, or move it to another space |
+| Click the space chip in a list's header | switch between the shown space's sessions and every space's |
 | `Ctrl+Shift+S` | search every session. `Tab` switches filter, `↑`/`↓` move, `Enter` opens, `Esc` closes |
 | Click / hover a usage chip | refresh now / see every window, its reset time, plan and login |
 | Right-click a Codex chip | spend one free reset pass (asks first; it can't be undone) |
@@ -413,6 +433,23 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
   `tower`, `street`, `tree`, `moon`).
 - **Sprites**: `mods/pixel-party/build/README.txt` explains how the sprite fonts are built from the
   cut sprites in `build/spr/`.
+- **Spaces for the session lists**: copy `mods/herdr-sessions/spaces.example.json` to
+  `%LOCALAPPDATA%\herdr-sessions\spaces.json` and make it yours. Each space's `name` is the name of a
+  Herdr space; `words` is a case-insensitive regular expression of what its work talks about, and
+  `weight` how much one of those words counts (raise it for a space whose words are rare); `folder` is
+  where the space is made again if you closed it, and `about` the note in the right-click menu.
+  `folders` sends a project folder (and everything under it) to a space; it decides alone when a
+  session has fewer than `enough` weighted words. Folders may start with `~`. The lists sort again
+  every minute; changing `words` counts every transcript again once.
+
+  ```json
+  { "key": "work", "name": "Work", "folder": "~", "about": "Clients and mail",
+    "weight": 3, "words": "client|contract|invoice|outlook" }
+  ```
+
+  To turn Remote Control off, remove `REMOTE` from `mods/pixel-new-menu/accounts.js` and the
+  `--remote-control` line from `claudeArgv` in `mods/herdr-sessions/main.js`. Do that if your plain
+  `claude` is signed in to a different account than the Claude desktop app.
 
 ## Privacy and safety
 
@@ -424,11 +461,16 @@ These mods are trusted code that runs on your machine. Before installing, know t
 - **read files outside their folder**: your Claude and Codex homes, the desktop apps' session data,
   and each account's login credentials (to read usage). The Herdr sessions panel also lists the
   processes under Herdr's terminals and asks Windows which of them holds a Codex thread's lock file.
+  With a `spaces.json`, `spaces.py` reads the sessions' transcripts (what you and the agent wrote, not
+  tool output) to count your space words; only the counts are kept.
 - **use the network**: each Claude account's OAuth access token goes only to `api.anthropic.com`
   (usage and profile; never printed, stored or refreshed), and the Codex app-server talks to OpenAI.
-  Nothing else goes out. What the party reads from agent screens stays on your machine.
+  Nothing else goes out. What the party reads from agent screens stays on your machine. Claude
+  sessions started with Remote Control (see above) are reachable from your Claude account, as
+  Claude Code's own `--remote-control` makes them.
 - **write** caches to `%LOCALAPPDATA%\herdr-sessions` (including `herdr-made.json`, the sessions
-  started in Herdr), `%LOCALAPPDATA%\herdr-claude-sessions` and `~/.config/herdr-app/.thumbs`. Nothing
+  started in Herdr, and `space-cache.json` / `space-map.json`, the space word counts and where each
+  session goes), `%LOCALAPPDATA%\herdr-claude-sessions` and `~/.config/herdr-app/.thumbs`. Nothing
   writes to Claude's or Codex's own files. Frieren Pixel also rewrites the background and color lines of its
   own layout file once an hour.
 
@@ -443,6 +485,9 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
   shows a read error.
 - The Herdr sessions panel looks at the tabs every 30 seconds, so a session whose tab closes sooner
   than that may not be listed.
+- Space sorting goes by words, so a session about several things can land in the wrong space:
+  right-click → Space moves it. The first sort reads every transcript once (about half a minute for a
+  few hundred sessions); after that only what was added.
 - The Claude usage endpoint rate-limits frequent polling. The gauges read every 5 minutes and wait
   out `Retry-After` (`wait`).
 - An account whose usage has no 5-hour window shows HP as `—`.
@@ -471,7 +516,8 @@ mods/pixel-*                    the six Frieren Pixel mods: sprite, monster, eff
                                 the stage strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
 mods/pixel-party/build/         scripts and cut sprites that build all of the above
 mods/journey-*                  the four Frieren Journey mods (with their pictures)
-mods/ (the rest)                nine tool mods both layouts use (session lists, usage, accounts, …)
+mods/ (the rest)                nine tool mods both layouts use (session lists, usage, accounts, …);
+                                herdr-sessions/spaces.py sorts sessions into spaces (spaces.example.json)
 keys.json                       the key bindings to merge
 RECIPE.md                       the full build brief (exact sizes, colors, behavior)
 preview.png                     the picture the Herdr gallery shows (Frieren Pixel)
@@ -545,7 +591,14 @@ in `LICENSES/`.
 
 - **세션 목록:** 왼쪽에 Claude·Codex 세션이 날짜별로 정리돼요. 클릭하면 이어서 열리고,
   우클릭하면 다른 계정이나 다른 에이전트로 넘길 수 있어요.
-- **세션 찾기:** `Ctrl+Shift+S`로 모든 세션을 검색해요.
+- **스페이스별 세션 정리(선택):** `spaces.json`을 두면 세션마다 대화 내용과 폴더를 보고 Herdr
+  스페이스(업무·프로젝트·도구 등)에 나눠 담아요. 지금 보이는 스페이스의 세션만 목록에 나오고, 어디에도
+  안 맞는 세션은 `Not sorted` 아래에 접혀요. 목록 머리의 칩을 누르면 `All spaces`로 전부 보여요.
+  우클릭 → Space로 직접 옮길 수 있고, 세션을 누르면 그 세션의 스페이스에서 열려요.
+  `spaces.json`이 없으면 예전처럼 전부 보여요.
+- **데스크톱 앱에서도 이어 하기:** 기본 `claude` 계정으로 Herdr에서 이어 열거나 새로 연 세션은
+  Remote Control로 시작해서 Claude 데스크톱 앱 목록에도 떠요.
+- **세션 찾기:** `Ctrl+Shift+S`로 모든 세션을 제목·폴더·스페이스 이름으로 검색해요.
 - **사용량과 계정 표시:** 위쪽 막대에 계정별 사용량이 보이고, 창마다 어떤 계정과 모델로 돌고 있는지
   표시돼요. 카드의 HP는 5시간 한도, MP는 주간 한도에서 남은 양이에요.
 - **결과물 패널:** `Ctrl+Shift+R`로 지금 폴더의 최신 파일을 미리보기와 함께 열어요.

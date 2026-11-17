@@ -4,13 +4,66 @@
 // closed. Sessions the desktop apps made (and copies of them), and sessions made in another
 // terminal, go to the Claude and Codex panels. A click goes to the session's tab, or resumes it in
 // a new tab with the account that made it; a right click offers the other accounts and a copy.
+// This panel also runs spaces.py every minute and shares its answer with the other panels.
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, terminals, agents, panes, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand } from "herdr";
+import { exec, terminals, agents, panes, spaces, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand } from "herdr";
 
 // The session-search window (Ctrl+Shift+S) hands its pick here, to open as if clicked in this list.
 const REQUEST = "sessions.request.herdr";
+
+// Spaces. spaces.py sorts every session into one of the spaces in spaces.json (none: no
+// sorting, every session listed); this panel shares the answer as "sessions.spaces" ({spaces: [{name, folder, about}],
+// map: {"claude:<id>" | "codex:<id>": name}}), and a pick in the right-click menu
+// ("sessions.space.assign", {key: name}) wins. While one of those spaces is shown, the list keeps
+// its sessions and any open in its tabs; unsorted ones fold under "Not sorted". A session opens
+// in its space. The same few lines are in the Claude, Codex and menu mods.
+const SPACES = "sessions.spaces";
+const ASSIGN = "sessions.space.assign";
+const NOT_SORTED = "Not sorted";
+const sortedSpaces = () => shared(SPACES)?.spaces ?? [];
+const spaceOf = (key) => (shared(ASSIGN) ?? {})[key] ?? shared(SPACES)?.map?.[key] ?? null;
+
+// One read of the shared lists for a whole draw.
+function spaceLookup() {
+  const picks = shared(ASSIGN) ?? {};
+  const map = shared(SPACES)?.map ?? {};
+  return (key) => picks[key] ?? map[key] ?? null;
+}
+// Worked out once per session per draw: asking again in every filter of a draw runs past the
+// time Herdr gives one with a few hundred sessions ("This view could not be re-rendered").
+const once = (f) => {
+  const seen = new Map();
+  return (s) => {
+    if (!seen.has(s)) seen.set(s, f(s));
+    return seen.get(s);
+  };
+};
+function shownSpace() {
+  const shown = spaces().find((p) => p.active);
+  return shown && sortedSpaces().some((s) => s.name === shown.name) ? shown : null;
+}
+// In the session's space when it has one (made if it was closed), else in the shown one.
+function openTab(tab, key) {
+  const name = key ? spaceOf(key) : null;
+  const sp = name && spaces().find((p) => p.name === name);
+  if (sp) return run("tab.new", { ...tab, space: sp.id });
+  if (name && sortedSpaces().some((s) => s.name === name)) return run("space.new", { name, folder: tab.folder, tab: tab.name, argv: tab.argv });
+  return run("tab.new", tab);
+}
+function spaceGroup(key) {
+  const mine = (shared(ASSIGN) ?? {})[key];
+  const auto = shared(SPACES)?.map?.[key] ?? null;
+  const now = mine ?? auto;
+  const items = sortedSpaces().map((s) => ({
+    label: s.name,
+    note: s.name === now ? (mine ? "Here now · your pick" : "Here now · sorted by its words") : s.about,
+    action: s.name === now ? null : { assign: { key, space: s.name } },
+  }));
+  if (mine) items.push({ label: "Sort by its words", note: auto ? `That gives ${auto}` : "That leaves it unsorted", action: { assign: { key, space: null } } });
+  return { label: "Space", items };
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -64,12 +117,15 @@ const HIDDEN = "sessions.hidden.herdr";
 const HIDDEN_GROUP = "Hidden";
 const ICON = { claude: "icons/claude.svg", codex: "icons/codex.svg" };
 
-// Any Claude account resumes a transcript by its path and writes on there.
+// Any Claude account resumes a transcript by its path and writes on there. The main account is
+// the Claude desktop app's login, so it resumes with Remote Control and shows in the app's list
+// under its title (claude2/claude3 are other logins and can't).
 function claudeArgv(s, account, fork) {
   const argv = [account.cmd, "--resume", s.path];
   if (fork) argv.push("--fork-session");
   if (s.perm === "bypassPermissions") argv.push("--dangerously-skip-permissions");
   else if (s.perm && s.perm !== "default") argv.push("--permission-mode", s.perm);
+  if (account.main) argv.push("--remote-control", fork ? `${s.title || "Herdr session"} (copy)` : s.title || "Herdr session");
   return argv;
 }
 
@@ -106,9 +162,13 @@ export default class HerdrSessions extends View {
     this.spin = true;
     this.folded = new Set(JSON.parse(localStorage.getItem("folded") ?? "[]"));
     this.filter = savedFilter();
+    this.scope = localStorage.getItem("scope") ?? "space";
     this.width = null;
+    this.sorting = false;
     this.refresh(cx);
     cx.timer.every(30000, (cx) => this.refresh(cx));
+    this.sortSpaces(cx);
+    cx.timer.every(60000, (cx) => this.sortSpaces(cx));
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
@@ -142,6 +202,25 @@ export default class HerdrSessions extends View {
     });
   }
 
+  // Sorts every panel's sessions into spaces (the first run reads all transcripts, ~20 s; later
+  // ones only what was added) and shares the answer when it changed. A failure keeps the last one.
+  sortSpaces(cx) {
+    if (this.sorting) return;
+    this.sorting = true;
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/herdr-sessions/spaces.py`], { timeout: 180000 });
+        if (r.code === 0) {
+          const data = JSON.parse(r.stdout);
+          const next = { spaces: data.spaces, map: data.map };
+          if (JSON.stringify(shared(SPACES)) !== JSON.stringify(next)) setShared(SPACES, next);
+        }
+      } catch {}
+      this.sorting = false;
+      cx.notify();
+    });
+  }
+
   fold(label) {
     this.folded.has(label) ? this.folded.delete(label) : this.folded.add(label);
     localStorage.setItem("folded", JSON.stringify([...this.folded]));
@@ -151,6 +230,13 @@ export default class HerdrSessions extends View {
     this.filter = id;
     try {
       localStorage.setItem("filter", id);
+    } catch {}
+  }
+
+  setScope(id) {
+    this.scope = id;
+    try {
+      localStorage.setItem("scope", id);
     } catch {}
   }
 
@@ -174,14 +260,14 @@ export default class HerdrSessions extends View {
     const title = s.title || "(untitled)";
     const name = fork ? `${title} (copy)` : account.name === s.account ? title : `${title} · ${account.name}`;
     const argv = s.kind === "claude" ? claudeArgv(s, account, fork) : codexArgv(s, account, fork ? "fork" : "resume");
-    return { tab: { name, folder: s.cwd, argv } };
+    return { tab: { name, folder: s.cwd, argv }, key: s.key };
   }
 
   perform(action) {
     if (action.problem) return notify({ title: "Can't open this session", body: action.problem, level: "warning" });
     if (action.focus) return run("pane.focus", { pane: action.focus });
     if (action.focusTerminal) return run("pane.focus", { terminal: action.focusTerminal });
-    if (action.tab) return run("tab.new", action.tab);
+    if (action.tab) return openTab(action.tab, action.key);
   }
 
   open(s) {
@@ -211,6 +297,7 @@ export default class HerdrSessions extends View {
         ? { label: "Show again", note: "Back from Hidden to its place", action: { hide: { key: HIDDEN, id: s.key, hidden: false } } }
         : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.key, hidden: true } } }],
     });
+    if (sortedSpaces().length) groups.push(spaceGroup(s.key));
     const rows = groups.reduce((n, g) => n + g.items.length, 0);
     openOverlay({ mod: "session-menu", kind: "popup", width: 320, height: 40 + groups.length * 26 + rows * 32, props: { menu: { title: s.title || "(untitled)", groups } } });
   }
@@ -223,12 +310,20 @@ export default class HerdrSessions extends View {
     const live = new Map(agents().map((a) => [a.address, a]));
     const hiddenKeys = new Set(shared(HIDDEN) ?? []);
     const filter = KINDS.find((f) => f.id === this.filter) ?? KINDS[0];
-    const listed = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key));
+    // The shown space's sessions, and the ones open in its tabs; unsorted ones fold at the bottom.
+    const shownSorted = shownSpace();
+    const here = this.scope === "all" ? null : shownSorted;
+    const term = once((s) => this.liveTerminal(s, all));
+    const spaceIn = spaceLookup();
+    const inHere = once((s) => !here || spaceIn(s.key) === here.name || term(s)?.labels?.["herdr.space"] === here.id);
+    const loose = (s) => Boolean(here) && !inHere(s) && !spaceIn(s.key);
+    const listed = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key) && inHere(s));
     const list = listed.filter(filter.keep);
-    const hidden = (this.sessions ?? []).filter((s) => hiddenKeys.has(s.key) && filter.keep(s));
+    const unsorted = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key) && loose(s) && filter.keep(s));
+    const hidden = (this.sessions ?? []).filter((s) => hiddenKeys.has(s.key) && inHere(s) && filter.keep(s));
 
     const row = (s) => {
-      const k = this.liveTerminal(s, all);
+      const k = term(s);
       const a = k && live.get(k.address);
       const off = !k && (!s.folder || (s.kind === "claude" && !s.path));
       const tip = [
@@ -280,9 +375,11 @@ export default class HerdrSessions extends View {
       if (groups.at(-1)?.label === label) groups.at(-1).members.push(s);
       else groups.push({ label, members: [s] });
     }
+    if (unsorted.length) groups.push({ label: NOT_SORTED, members: unsorted });
     if (hidden.length) groups.push({ label: HIDDEN_GROUP, members: hidden });
-    // The hidden group starts folded; the others start open.
-    const isFolded = (label) => (label === HIDDEN_GROUP ? !this.folded.has(`${HIDDEN_GROUP}:open`) : this.folded.has(label));
+    // The hidden and not-sorted groups start folded; the others start open.
+    const startsFolded = (label) => label === HIDDEN_GROUP || label === NOT_SORTED;
+    const isFolded = (label) => (startsFolded(label) ? !this.folded.has(`${label}:open`) : this.folded.has(label));
     const header = (g, i) => {
       const open = !isFolded(g.label);
       return h_flex()
@@ -298,8 +395,9 @@ export default class HerdrSessions extends View {
         .text_color(t.dim)
         .cursor_pointer()
         .hover((el) => el.text_color(t.foreground))
+        .when(g.label === NOT_SORTED, (el) => el.tooltip("Sessions with too few words to sort, and in no known folder.\nRight-click one to pick its space."))
         .on_click((_e, cx) => {
-          this.fold(g.label === HIDDEN_GROUP ? `${HIDDEN_GROUP}:open` : g.label);
+          this.fold(startsFolded(g.label) ? `${g.label}:open` : g.label);
           cx.notify();
         })
         .child(div().truncate().child(g.label))
@@ -347,6 +445,32 @@ export default class HerdrSessions extends View {
         }));
     };
 
+    // The header chip: the shown space (its sessions only) or every space; a click switches.
+    const scopeChip = () => {
+      const on = Boolean(here);
+      return div()
+        .id("hs-scope")
+        .mr(8)
+        .px(5)
+        .h(16)
+        .flex_none()
+        .flex()
+        .items_center()
+        .rounded(4)
+        .bg(t.raised)
+        .text_size(10.5)
+        .font_medium()
+        .text_color(on ? t.foreground : t.dim)
+        .cursor_pointer()
+        .hover((el) => el.text_color(t.foreground))
+        .tooltip(on ? `Sessions sorted into ${shownSorted.name}, and any open in its tabs\nClick: every space` : `Every space's sessions\nClick: only ${shownSorted.name}'s`)
+        .on_click((_e, cx) => {
+          this.setScope(on ? "all" : "space");
+          cx.notify();
+        })
+        .child(on ? shownSorted.name : "All spaces");
+    };
+
     const note = (text, color) => div().px(16).py(4).text_size(12).text_color(color).child(text);
     return v_flex()
       .id("hs-root")
@@ -370,7 +494,8 @@ export default class HerdrSessions extends View {
           .flex_none()
           .items_center()
           .justify_between()
-          .child(div().flex_1().text_size(11.5).font_medium().text_color(t.dim).child("Herdr sessions"))
+          .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_medium().text_color(t.dim).child("Herdr sessions"))
+          .when(Boolean(shownSorted), (el) => el.child(scopeChip()))
           .child(div()
             .id("hs-search")
             .mr(10)
@@ -398,6 +523,7 @@ export default class HerdrSessions extends View {
         .child(filterBar())
         .when(Boolean(this.error), (el) => el.child(note(this.error, t.blocked)))
         .when(this.sessions?.length === 0, (el) => el.child(note("No sessions started in Herdr yet.", t.dim)))
+        .when(Boolean(here) && this.sessions?.length > 0 && listed.length === 0, (el) => el.child(note(`No sessions sorted into ${here.name}.`, t.dim)))
         .when(listed.length > 0 && list.length === 0, (el) => el.child(note(`No ${filter.label} sessions.`, t.dim))))
       .child(v_flex().id("hs-list").flex_1().min_h(0).px(rail ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows));
   }

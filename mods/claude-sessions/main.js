@@ -4,7 +4,59 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, terminals, agents, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand } from "herdr";
+import { exec, terminals, agents, spaces, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand } from "herdr";
+
+// Spaces. herdr-sessions/spaces.py sorts every session into one of the spaces in spaces.json
+// (none: no sorting, every session listed); the Herdr sessions panel shares the answer as "sessions.spaces"
+// ({spaces: [{name, folder, about}], map: {"claude:<id>" | "codex:<id>": name}}), and a pick in
+// the right-click menu ("sessions.space.assign", {key: name}) wins. While one of those spaces is
+// shown, the list keeps its sessions and any open in its tabs; unsorted ones fold under "Not
+// sorted". A session opens in its space. The same few lines are in the Codex, Herdr and menu mods.
+const SPACES = "sessions.spaces";
+const ASSIGN = "sessions.space.assign";
+const NOT_SORTED = "Not sorted";
+const sortedSpaces = () => shared(SPACES)?.spaces ?? [];
+const spaceOf = (key) => (shared(ASSIGN) ?? {})[key] ?? shared(SPACES)?.map?.[key] ?? null;
+
+// One read of the shared lists for a whole draw.
+function spaceLookup() {
+  const picks = shared(ASSIGN) ?? {};
+  const map = shared(SPACES)?.map ?? {};
+  return (key) => picks[key] ?? map[key] ?? null;
+}
+// Worked out once per session per draw: asking again in every filter of a draw runs past the
+// time Herdr gives one with a few hundred sessions ("This view could not be re-rendered").
+const once = (f) => {
+  const seen = new Map();
+  return (s) => {
+    if (!seen.has(s)) seen.set(s, f(s));
+    return seen.get(s);
+  };
+};
+function shownSpace() {
+  const shown = spaces().find((p) => p.active);
+  return shown && sortedSpaces().some((s) => s.name === shown.name) ? shown : null;
+}
+// In the session's space when it has one (made if it was closed), else in the shown one.
+function openTab(tab, key) {
+  const name = key ? spaceOf(key) : null;
+  const sp = name && spaces().find((p) => p.name === name);
+  if (sp) return run("tab.new", { ...tab, space: sp.id });
+  if (name && sortedSpaces().some((s) => s.name === name)) return run("space.new", { name, folder: tab.folder, tab: tab.name, argv: tab.argv });
+  return run("tab.new", tab);
+}
+function spaceGroup(key) {
+  const mine = (shared(ASSIGN) ?? {})[key];
+  const auto = shared(SPACES)?.map?.[key] ?? null;
+  const now = mine ?? auto;
+  const items = sortedSpaces().map((s) => ({
+    label: s.name,
+    note: s.name === now ? (mine ? "Here now · your pick" : "Here now · sorted by its words") : s.about,
+    action: s.name === now ? null : { assign: { key, space: s.name } },
+  }));
+  if (mine) items.push({ label: "Sort by its words", note: auto ? `That gives ${auto}` : "That leaves it unsorted", action: { assign: { key, space: null } } });
+  return { label: "Space", items };
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -96,6 +148,7 @@ export default class ClaudeSessions extends View {
     this.spin = true;
     this.folded = new Set(JSON.parse(localStorage.getItem("folded") ?? "[]"));
     this.filter = savedFilter();
+    this.scope = localStorage.getItem("scope") ?? "space";
     this.width = null;
     this.refresh(cx);
     cx.timer.every(60000, (cx) => this.refresh(cx));
@@ -147,6 +200,13 @@ export default class ClaudeSessions extends View {
     } catch {}
   }
 
+  setScope(id) {
+    this.scope = id;
+    try {
+      localStorage.setItem("scope", id);
+    } catch {}
+  }
+
   // What opening the session with an account does: go to its tab, ask first, or open it.
   action(s, account) {
     const k = terminalFor(s, terminals());
@@ -154,9 +214,10 @@ export default class ClaudeSessions extends View {
     if (a) return { focus: a.pane };
     if (!s.resumable) return { problem: "This PC has no transcript (.jsonl) for it." };
     if (!s.folder) return { problem: `Working folder is missing: ${s.cwd ?? ""}` };
+    const key = `claude:${s.cli}`;
     const name = account.main ? s.title : `${s.title} · ${account.name}`;
     const tab = { name, folder: s.cwd, argv: argvFor(s, account, false) };
-    if (!s.desktop) return { tab };
+    if (!s.desktop) return { tab, key };
     return {
       confirm: {
         heading: "Session also open in the desktop app",
@@ -164,8 +225,8 @@ export default class ClaudeSessions extends View {
         hint: "Continue: stop typing in the desktop app. Copy: forks into a new session, so neither affects the other.",
         actions: [
           { label: "Cancel", action: null },
-          { label: "Open a copy", action: { tab: { name: `${name} (copy)`, folder: s.cwd, argv: argvFor(s, account, true) } } },
-          { label: `Continue as ${account.name}`, primary: true, action: { tab } },
+          { label: "Open a copy", action: { tab: { name: `${name} (copy)`, folder: s.cwd, argv: argvFor(s, account, true) }, key } },
+          { label: `Continue as ${account.name}`, primary: true, action: { tab, key } },
         ],
       },
     };
@@ -175,7 +236,7 @@ export default class ClaudeSessions extends View {
   perform(action) {
     if (action.problem) return notify({ title: "Can't open this session", body: action.problem, level: "warning" });
     if (action.focus) return run("pane.focus", { pane: action.focus });
-    if (action.tab) return run("tab.new", action.tab);
+    if (action.tab) return openTab(action.tab, action.key);
     openOverlay({ mod: "session-menu", kind: "dialog", width: 420, height: 236, props: { confirm: action.confirm } });
   }
 
@@ -208,6 +269,7 @@ export default class ClaudeSessions extends View {
         ? { label: "Show again", note: "Back from Hidden to its place", action: { hide: { key: HIDDEN, id: s.cli, hidden: false } } }
         : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.cli, hidden: true } } }],
     });
+    if (sortedSpaces().length) groups.push(spaceGroup(`claude:${s.cli}`));
     const rows = groups.reduce((n, g) => n + g.items.length, 0);
     openOverlay({ mod: "session-menu", kind: "popup", width: 300, height: 40 + groups.length * 26 + rows * 32, props: { menu: { title: s.title, groups } } });
   }
@@ -220,15 +282,24 @@ export default class ClaudeSessions extends View {
     const live = new Map(agents().map((a) => [a.address, a]));
     const hiddenIds = new Set(shared(HIDDEN) ?? []);
     const filter = FILTERS.find((f) => f.id === this.filter) ?? FILTERS[0];
-    const when = (s) => group(s.last ?? 0, now);
-    const always = (s) => Boolean(terminalFor(s, all));
+    const term = once((s) => terminalFor(s, all));
+    const when = once((s) => group(s.last ?? 0, now));
+    const always = (s) => Boolean(term(s));
     const shows = (s) => filter.keep(when(s)) || always(s);
-    const listed = (this.sessions ?? []).filter((s) => !hiddenIds.has(s.cli));
+    // The shown space's sessions, and the ones open in its tabs; unsorted ones fold at the bottom.
+    const shownSorted = shownSpace();
+    const here = this.scope === "all" ? null : shownSorted;
+    const spaceIn = spaceLookup();
+    const sorted = once((s) => spaceIn(`claude:${s.cli}`));
+    const inHere = once((s) => !here || sorted(s) === here.name || term(s)?.labels?.["herdr.space"] === here.id);
+    const loose = (s) => Boolean(here) && !inHere(s) && !sorted(s);
+    const listed = (this.sessions ?? []).filter((s) => !hiddenIds.has(s.cli) && inHere(s));
     const list = listed.filter(shows);
-    const hidden = (this.sessions ?? []).filter((s) => hiddenIds.has(s.cli) && shows(s));
+    const unsorted = (this.sessions ?? []).filter((s) => !hiddenIds.has(s.cli) && loose(s) && shows(s));
+    const hidden = (this.sessions ?? []).filter((s) => hiddenIds.has(s.cli) && inHere(s) && shows(s));
 
     const row = (s) => {
-      const k = terminalFor(s, all);
+      const k = term(s);
       const a = k && live.get(k.address);
       const off = !s.resumable || !s.folder;
       const tip = [s.cwd, s.origin === "herdr" ? "Session made in Herdr from a Codex handover"
@@ -278,13 +349,15 @@ export default class ClaudeSessions extends View {
     // Date groups in list order; a header folds its group and, folded, says how many.
     const groups = [];
     for (const s of list) {
-      const label = group(s.last ?? 0, now);
+      const label = when(s);
       if (groups.at(-1)?.label === label) groups.at(-1).members.push(s);
       else groups.push({ label, members: [s] });
     }
+    if (unsorted.length) groups.push({ label: NOT_SORTED, members: unsorted });
     if (hidden.length) groups.push({ label: HIDDEN_GROUP, members: hidden });
-    // The hidden group starts folded; the others start open.
-    const isFolded = (label) => (label === HIDDEN_GROUP ? !this.folded.has(`${HIDDEN_GROUP}:open`) : this.folded.has(label));
+    // The hidden and not-sorted groups start folded; the others start open.
+    const startsFolded = (label) => label === HIDDEN_GROUP || label === NOT_SORTED;
+    const isFolded = (label) => (startsFolded(label) ? !this.folded.has(`${label}:open`) : this.folded.has(label));
     const header = (g, i) => {
       const open = !isFolded(g.label);
       return h_flex()
@@ -300,8 +373,9 @@ export default class ClaudeSessions extends View {
         .text_color(t.dim)
         .cursor_pointer()
         .hover((el) => el.text_color(t.foreground))
+        .when(g.label === NOT_SORTED, (el) => el.tooltip("Sessions with too few words to sort, and in no known folder.\nRight-click one to pick its space."))
         .on_click((_e, cx) => {
-          this.fold(g.label === HIDDEN_GROUP ? `${HIDDEN_GROUP}:open` : g.label);
+          this.fold(startsFolded(g.label) ? `${g.label}:open` : g.label);
           cx.notify();
         })
         .child(div().truncate().child(g.label))
@@ -351,6 +425,32 @@ export default class ClaudeSessions extends View {
         }));
     };
 
+    // The header chip: the shown space (its sessions only) or every space; a click switches.
+    const scopeChip = () => {
+      const on = Boolean(here);
+      return div()
+        .id("cs-scope")
+        .mr(8)
+        .px(5)
+        .h(16)
+        .flex_none()
+        .flex()
+        .items_center()
+        .rounded(4)
+        .bg(t.raised)
+        .text_size(10.5)
+        .font_medium()
+        .text_color(on ? t.foreground : t.dim)
+        .cursor_pointer()
+        .hover((el) => el.text_color(t.foreground))
+        .tooltip(on ? `Sessions sorted into ${shownSorted.name}, and any open in its tabs\nClick: every space` : `Every space's sessions\nClick: only ${shownSorted.name}'s`)
+        .on_click((_e, cx) => {
+          this.setScope(on ? "all" : "space");
+          cx.notify();
+        })
+        .child(on ? shownSorted.name : "All spaces");
+    };
+
     const note = (text, color) => div().px(16).py(4).text_size(12).text_color(color).child(text);
     return v_flex()
       .id("cs-root")
@@ -374,7 +474,8 @@ export default class ClaudeSessions extends View {
           .flex_none()
           .items_center()
           .justify_between()
-          .child(div().flex_1().text_size(11.5).font_medium().text_color(t.dim).child("Claude sessions"))
+          .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_medium().text_color(t.dim).child("Claude sessions"))
+          .when(Boolean(shownSorted), (el) => el.child(scopeChip()))
           .child(div()
             .id("cs-search")
             .mr(10)
@@ -402,6 +503,7 @@ export default class ClaudeSessions extends View {
         .child(filterBar())
         .when(Boolean(this.error), (el) => el.child(note(this.error, t.blocked)))
         .when(this.sessions?.length === 0, (el) => el.child(note("No desktop app sessions.", t.dim)))
+        .when(Boolean(here) && this.sessions?.length > 0 && listed.length === 0, (el) => el.child(note(`No sessions sorted into ${here.name}.`, t.dim)))
         .when(Boolean(filter.empty) && listed.length > 0 && list.length === 0, (el) => el.child(note(`No sessions ${filter.empty}.`, t.dim))))
       .child(v_flex().id("cs-list").flex_1().min_h(0).px(rail ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows));
   }

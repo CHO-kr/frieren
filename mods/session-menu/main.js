@@ -2,7 +2,8 @@
 // {menu: {title, groups: [{label, items: [{label, note, action}]}]}} or
 // {confirm: {heading, body, hint, actions: [{label, primary, action}]}}.
 // An action is data, so it travels in props:
-//   {tab: tab.new args}               open it
+//   {tab: tab.new args, key?}          open it (in the space of session `key`, as the panels do)
+//   {assign: {key, space}}             sort session `key` into a space (null: back to its words)
 //   {focus: pane}                      go to the tab that has the session open
 //   {confirm: …}                       ask first, in a dialog
 //   {toCodex: {path, cwd, title, perm, account, home}}   hand a Claude session to its Codex pair
@@ -13,7 +14,20 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, run, theme, props, openOverlay, closeOverlay, notify, appHome, shared, setShared } from "herdr";
+import { exec, run, spaces, theme, props, openOverlay, closeOverlay, notify, appHome, shared, setShared } from "herdr";
+
+// The session panels' spaces (see claude-sessions/main.js): a session opens in its space.
+const SPACES = "sessions.spaces";
+const ASSIGN = "sessions.space.assign";
+const sortedSpaces = () => shared(SPACES)?.spaces ?? [];
+const spaceOf = (key) => (shared(ASSIGN) ?? {})[key] ?? shared(SPACES)?.map?.[key] ?? null;
+function openTab(tab, key) {
+  const name = key ? spaceOf(key) : null;
+  const sp = name && spaces().find((p) => p.name === name);
+  if (sp) return run("tab.new", { ...tab, space: sp.id });
+  if (name && sortedSpaces().some((s) => s.name === name)) return run("space.new", { name, folder: tab.folder, tab: tab.name, argv: tab.argv });
+  return run("tab.new", tab);
+}
 
 // Codex under another account reads this account's threads from its databases.
 function codexArgv(account, home, thread, verb = "resume", model = null) {
@@ -38,7 +52,15 @@ export default class SessionMenu extends View {
     if (!action) return this.done();
     if (action.tab) {
       this.done();
-      return run("tab.new", action.tab);
+      return openTab(action.tab, action.key);
+    }
+    if (action.assign) {
+      const { key, space } = action.assign;
+      const picks = { ...(shared(ASSIGN) ?? {}) };
+      if (space) picks[key] = space;
+      else delete picks[key];
+      setShared(ASSIGN, picks);
+      return this.done();
     }
     if (action.focus) {
       this.done();

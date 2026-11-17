@@ -4,6 +4,7 @@
 // session panels), Esc to leave.
 // It reads the lists the session panels last saved and hands the pick to that panel, so opening
 // works exactly like a click there (accounts, the desktop app question, a tab already open).
+// Each row says its space (see claude-sessions/main.js); typing a space's name finds its sessions.
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
@@ -23,6 +24,7 @@ function ago(ms) {
 }
 
 const base = (path) => (path ?? "").split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+const spaceOf = (key) => (shared("sessions.space.assign") ?? {})[key] ?? shared("sessions.spaces")?.map?.[key] ?? null;
 
 export default class SessionSearch extends View {
   init(_props, cx) {
@@ -33,7 +35,7 @@ export default class SessionSearch extends View {
     // A panel's search button says which list to start on.
     this.kind = shared("sessions.search.kind") ?? "all";
     if (shared("sessions.search.kind")) setShared("sessions.search.kind", null);
-    this.input = InputState.new({ placeholder: "Search by title or folder…" });
+    this.input = InputState.new({ placeholder: "Search by title, folder or space…" });
     this.input.on("change", (_e, cx) => {
       this.filter = this.input.value();
       this.at = 0;
@@ -62,15 +64,15 @@ export default class SessionSearch extends View {
       this.items = [
         ...(herdr?.sessions ?? []).map((s) => ({
           panel: "herdr", agent: s.kind, id: s.key, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
-          account: s.account, busy: s.current ? "open" : null, hidden: hiddenHerdr.has(s.key),
+          account: s.account, busy: s.current ? "open" : null, hidden: hiddenHerdr.has(s.key), space: spaceOf(s.key),
         })),
         ...(claude?.sessions ?? []).filter((s) => !s.archived).map((s) => ({
           panel: "claude", agent: "claude", id: s.cli, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
-          linked: Boolean(s.link), busy: s.desktop ? "app" : null, hidden: hiddenClaude.has(s.cli),
+          linked: Boolean(s.link), busy: s.desktop ? "app" : null, hidden: hiddenClaude.has(s.cli), space: spaceOf(`claude:${s.cli}`),
         })),
         ...(codex?.threads ?? []).map((s) => ({
           panel: "codex", agent: "codex", id: s.id, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
-          linked: Boolean(s.link), busy: s.open ? "open" : null, hidden: hiddenCodex.has(s.id),
+          linked: Boolean(s.link), busy: s.open ? "open" : null, hidden: hiddenCodex.has(s.id), space: spaceOf(`codex:${s.id}`),
         })),
       ].sort((a, b) => b.last - a.last);
       cx.notify();
@@ -84,7 +86,7 @@ export default class SessionSearch extends View {
   rows() {
     const words = this.filter.toLowerCase().split(/\s+/).filter(Boolean);
     return this.items.filter((s) => (this.kind === "all" || s.panel === this.kind) &&
-      words.every((w) => `${s.title} ${s.cwd ?? ""}`.toLowerCase().includes(w)));
+      words.every((w) => `${s.title} ${s.cwd ?? ""} ${s.space ?? ""}`.toLowerCase().includes(w)));
   }
 
   // The panel that owns the session opens it (or shows its menu) as if it were clicked there.
@@ -136,6 +138,7 @@ export default class SessionSearch extends View {
           .child(div().truncate().text_color(s.hidden ? t.dim : t.foreground).child(s.title))
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(s.cwd ?? "")))
         .when(s.linked, (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("⇄")))
+        .when(Boolean(s.space), (el) => el.child(tag(s.space, t.muted)))
         .when(s.panel === "herdr", (el) => el.child(tag(`herdr · ${s.account}`, t.accent)))
         .when(s.hidden, (el) => el.child(tag("hidden", t.dim)))
         .when(Boolean(s.busy), (el) => el.child(tag(s.busy, t.dim)))

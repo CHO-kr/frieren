@@ -30,6 +30,15 @@ test("main account runs as the menu would, others by their own command", () => {
   assert.deepEqual(runFor(agents[0], accounts.claude[1]), ["claude2"]);
 });
 
+test("the main Claude account starts with Remote Control (the desktop app's login), once", () => {
+  const remote = ["claude", "--remote-control", "--remote-control-session-name-prefix", "herdr"];
+  assert.deepEqual(runFor(agents[0], accounts.claude[0]), remote);
+  assert.deepEqual(runFor({ ...agents[0], run: ["claude", "--remote-control"] }, accounts.claude[0]), ["claude", "--remote-control"]);
+  assert.deepEqual(agentRows(agents, { claude: [accounts.claude[0]] }, null)[0].run, remote);
+  assert.deepEqual(agentRows(agents, accounts, null)[0].run, remote);
+  assert.equal(agents[0].run.length, 1);
+});
+
 test("the account with the most left comes first, noted", () => {
   const rows = agentRows(agents, accounts, { claude: { name: "claude3", used: 13 }, codex: { name: "codex2", used: 1 } });
   assert.deepEqual(rows.map((r) => r.key), ["claude:claude3", "claude:claude", "claude:claude2", "codex:codex2", "codex:codex", "codex:codex3", "grok", "pi"]);

@@ -10,8 +10,12 @@ it works; Frieren Journey has painted portraits behind translucent terminals.
 
 The two layouts are Frieren Pixel (`frieren-pixel`) and Frieren Journey (`frieren-journey`). Both
 have three session lists: the Claude desktop app's sessions, the Codex desktop app's threads, and
-the sessions started in Herdr tabs (click to resume, right-click to switch account or agent). Both
-show each account's plan usage and say which account and model each pane runs on. UI text is English.
+the sessions started in Herdr tabs (click to resume, right-click to switch account or agent). With an
+optional `spaces.json` the lists follow your Herdr spaces: each session is sorted into a space by its
+words and folder, the lists show the shown space's sessions, and a session opens in its own space.
+Sessions continued or started with the main `claude` account run with Remote Control, so the Claude
+desktop app lists them too. Both show each account's plan usage and say which account and model each
+pane runs on. UI text is English.
 
 This file describes Frieren Journey first. [Frieren Pixel](#frieren-pixel) at the end is built on top
 of it and lists only what differs.
@@ -75,6 +79,12 @@ paired with the other agent, a tag (`app` = the Claude desktop app has it open, 
 the Codex thread), and the age (`now`, `5m`, `3h`, `2d`) in 11px `dim`. The row of the focused agent is `selected`.
 Herdr rows put a 12px Claude or Codex icon before the title and the account (`claude2`, `codex3`) in a
 small `raised` tag instead of `⇄`/`app`.
+When the shown space is one of the sorted spaces, the header gets a chip before the icons (16px tall,
+`px` 5, rounded 4, `raised`, 10.5px medium): the space's name in `foreground` while the list keeps that
+space's sessions, `All spaces` in `dim` when it shows every space; a click switches (kept per panel in
+`localStorage` `scope`). Sessions sorted nowhere go to a `Not sorted` group before Hidden, folded at
+first like Hidden, its header's tooltip saying why and that a right-click picks a space. An empty space
+says `No sessions sorted into <space>.` (Codex: threads).
 
 **Top bar** (58px row):
 - `usage` block, 818px: one chip per account, 2px apart. Claude chips (78×32px) show the name and the
@@ -250,16 +260,44 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
   the tab's program: `derived.json`, how `outside`). Prints `{accounts, sessions}` and saves
   `herdr-list.json`. Rows: kind, account, title (Claude: custom or AI title from the transcript; Codex:
   the thread's name), cwd, last activity. Shared `sessions.request.herdr`, `sessions.hidden.herdr`.
-  It never writes to Claude's or Codex's own files.
+  It never writes to Claude's or Codex's own files. Resuming with the main `claude` account adds
+  `--remote-control <title>` (a copy: `<title> (copy)`), so the Claude desktop app lists it.
+  Every 60 s it also runs `spaces.py` (`exec` timeout 180 s) and shares the answer as
+  `sessions.spaces` (`{spaces: [{name, folder, about}], map: {"claude:<id>" | "codex:<id>": name}}`).
+  `spaces.py` reads `%LOCALAPPDATA%\herdr-sessions\spaces.json` (`spaces: [{key, name, folder, about,
+  words, weight}]`, `folders: {folder: key}`, `enough`; `spaces.example.json` ships next to it; without
+  the file it prints no spaces and nothing is sorted). For every session in the three saved lists it
+  counts each space's `words` (a case-insensitive regex) in the conversation (Claude: `user` and
+  `assistant` text blocks, not `tool_result`; Codex: `response_item` messages; system and environment
+  preambles skipped) plus 10× in the title, times the space's `weight`. The space a Herdr session ran
+  in (`where`), else the longest matching `folders` entry, doubles its space's count. The best space wins
+  with at least `enough` (8); otherwise that ran-in or folder space; otherwise unsorted. Counts are cached in
+  `space-cache.json` by transcript size and read offset (new words reset it); more than six new
+  transcripts are read in a process pool. The answer is also saved in `space-map.json`.
+- **Spaces in the three lists** (the same few helpers are in `claude-sessions`, `codex-sessions`,
+  `herdr-sessions` and `session-menu`): a session's space is shared `sessions.space.assign[key]` (the
+  right-click pick) or else `sessions.spaces.map[key]`. While the shown Herdr space (`spaces()`, `active`)
+  has a sorted space's name, a list keeps the sessions of that space plus any running in one of its
+  tabs (the terminal's `herdr.space` label); unsorted ones go to `Not sorted`, others are left out.
+  Opening a session runs `tab.new` with its space's id, or `space.new {name, folder, tab, argv}` when no
+  Herdr space has that name; an unsorted one opens in the shown space. The right-click menu ends with a
+  **Space** group: one row per space (`about` as the note; the current one says `Here now · your pick`
+  or `Here now · sorted by its words` and does nothing), plus `Sort by its words` after a pick (its note
+  says where the words would put it). Each draw works out a session's terminal, date group and space
+  once (a `Map` per draw); asking again in every filter takes a few hundred sessions past the time Herdr
+  gives a draw.
 - `session-menu` (`main.js`, `bridge.py`): draws the popup menu (`props.menu`) and the confirm dialog
-  (`props.confirm`). Actions are data: `tab`, `focus`, `confirm`, `hide`, `toCodex`, `toClaude`,
-  `resetPass`. `bridge.py to-codex <jsonl> <cwd> <title>` / `to-claude <thread> <claude config dir>`
+  (`props.confirm`). Actions are data: `tab` (with the session `key`, opened in its space), `assign`
+  (`{key, space}`: sets or, with `null`, removes the pick in shared `sessions.space.assign`), `focus`,
+  `confirm`, `hide`, `toCodex`, `toClaude`, `resetPass`. `bridge.py to-codex <jsonl> <cwd> <title>` / `to-claude <thread> <claude config dir>`
   keeps pairs in `%LOCALAPPDATA%\herdr-sessions\links.json`. It writes hand-offs to `…\handoff\*.md`
   (at most 120,000 characters, keeping the first request and the newest turns) and uses the app-server's
   `externalAgentConfig/import` for the first Claude→Codex move.
 - `session-search` (`main.js`; `mod.json` overlay: popup, `at: "top"`, offset 40, 680 × 0.8): reads the
   three saved lists (`herdr-list.json`, `claude-list.json`, `codex-list.json`) with `readTextFile`.
-  Chips All / Herdr / Claude / Codex, one per list; Herdr rows carry a `herdr · <account>` tag. It
+  Chips All / Herdr / Claude / Codex, one per list; Herdr rows carry a `herdr · <account>` tag, and every
+  sorted row its space's name in a `muted` tag. Words match the title, folder and space name
+  (placeholder `Search by title, folder or space…`). It
   hands the pick to the list that owns it by setting `sessions.request.<panel>` and running
   `<panel>-sessions.request`. Shared `sessions.search.kind` picks the starting chip.
 - `pane-account` (clone of shipped `pane`; `main.js`, `who.py`, five 16px stroke icons): finds its pane
@@ -354,6 +392,15 @@ at the same paths if you like.
   Codex→Claude move live in that account's `projects` folder, and `list.ps1` finds them through `links.json`.
 - Without the Claude desktop app the Claude list says it has no sessions. Without the Codex app's
   `state_5.sqlite` the Codex list shows the read error.
+- `spaces.json` is personal (project folders, client and product names): keep it in
+  `%LOCALAPPDATA%\herdr-sessions`, never in the mod folder. A space's `name` must equal the Herdr
+  space's name, or its sessions open in a new space of that name.
+- A draw that runs too long is stopped and the panel shows "This view could not be re-rendered" over
+  its last picture. Work each session's facts out once per draw (see Spaces in the three lists) and
+  keep `exec` out of `render`.
+- Remote Control assumes the plain `claude` is signed in to the same account as the Claude desktop
+  app (a Claude subscription login). Otherwise drop `--remote-control` from `claudeArgv` and `REMOTE`
+  from `pixel-new-menu/accounts.js`.
 
 ## Done when
 
@@ -376,6 +423,15 @@ at the same paths if you like.
   agent and back reuses the same pair (`⇄` on both rows) and hands over only the new turns.
 - Ctrl+Shift+S opens Find a session with the input focused. Typing two words narrows the list, and Enter opens
   the top match exactly as a panel click would.
+- With `spaces.example.json` copied to `%LOCALAPPDATA%\herdr-sessions\spaces.json` and Herdr spaces
+  named `Work`, `Projects` and `Tools`: showing `Tools` puts a `Tools` chip in each list's header and
+  lists only its sessions (unsorted ones folded under `Not sorted`); clicking the chip shows `All
+  spaces`. Right-click → Space → Work moves a session there at once, and `Sort by its words` puts it
+  back. Clicking a `Work` session while `Tools` is shown opens its tab in `Work`. Typing `work` in
+  Ctrl+Shift+S finds the Work sessions. Without `spaces.json` there is no chip and no Space group.
+- A Herdr session resumed with the plain `claude` account, or a new `claude` from the + menu
+  (`herdr-<two words>`), shows in the Claude desktop app's list as connected. A minimized desktop app
+  may not refresh its list until it's shown.
 - A pane started from the panel shows `claude2 · <model> · weekly N%` in its header. An agent typed by hand
   (`codex3`) shows its account within about 3 seconds.
 - Ctrl+Shift+R and the `Results` button open and close the results panel (the button is lit while open).
@@ -594,7 +650,10 @@ loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` a
 - `pixel-new-menu` (`main.js`, `accounts.js` + `accounts.test.mjs`): Herdr's new-menu with one row per
   account for Claude Code and Codex (the accounts the session panels share as `sessions.claude` /
   `sessions.codex`, each started by its own command such as `claude2`; on another machine one row per
-  agent), the `usage.roomiest` one first with a `most left` note, then the other agents.
+  agent), the `usage.roomiest` one first with a `most left` note, then the other agents. The main
+  `claude` row (and a lone Claude row) adds `--remote-control --remote-control-session-name-prefix
+  herdr` unless its command already has `--remote-control`, so the Claude desktop app lists the new
+  session as `herdr-<two words>` (connected) until Claude titles it after the first message.
 - `pixel-spaces` (`main.js`, `fit.js` + `fit.test.mjs`, `art/<place>.png`, 32×32 art at 64px): `SPACES ·
   DESTINATIONS`. Each space is a place (Royal Capital, Old Ruins, Flower Hill, Forest Camp, Rampart
   Watchtower, Town Street, Starlit Old Tree, Moonlit Castle) with branch and ahead/behind. With one space

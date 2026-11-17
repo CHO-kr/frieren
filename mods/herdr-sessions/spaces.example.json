@@ -1,0 +1,34 @@
+{
+  "spaces": [
+    {
+      "key": "work",
+      "name": "Work",
+      "folder": "~",
+      "about": "Clients, contracts and mail",
+      "weight": 3,
+      "words": "client|customer|contract|invoice|meeting|outlook|(?<![a-z])mail(?![a-z])"
+    },
+    {
+      "key": "projects",
+      "name": "Projects",
+      "folder": "~/projects",
+      "about": "The apps and sites I build",
+      "weight": 1,
+      "words": "website|landing page|vercel|netlify|react|next\\.js|app store|deploy"
+    },
+    {
+      "key": "tools",
+      "name": "Tools",
+      "folder": "~/.config/herdr-app",
+      "about": "Herdr, Claude Code and Codex setup",
+      "weight": 1,
+      "words": "herdr|claude code|codex|(?<![a-z])mcp(?![a-z])|(?<![a-z])skills?(?![a-z])|settings\\.json|config\\.toml|keybindings"
+    }
+  ],
+  "folders": {
+    "~/projects": "projects",
+    "~/.config/herdr-app": "tools",
+    "~/.codex": "tools"
+  },
+  "enough": 8
+}
