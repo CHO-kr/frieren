@@ -40,11 +40,13 @@ function find(node, id) {
 }
 // macOS draws colour fonts in one colour, so there a sprite is a stack of one-colour texts (lib.js layered), from the
 // fonts' layer maps: loaded once by loadLayers, keyed by family. Elsewhere (and until they load) the colour glyphs.
+// herdrWindow() can be null while the app starts: ask each time, and until it answers tell by the home folder.
+const platform = () => herdrWindow()?.platform ?? (/^[A-Za-z]:[\\/]/.test(home()) ? "windows" : home().startsWith("/Users/") ? "macos" : "linux");
 const parse = (text) => { try { return JSON.parse(text); } catch { return null; } };
 const LAYERS = new Map();
 const STACKS = new Map(); // family + frames -> layered(): the same frames come back on every render
 async function loadLayers(families) {
-  if (herdrWindow()?.platform !== "macos") return false;
+  if (platform() !== "macos") return false;
   let added = false;
   for (const family of families) {
     if (LAYERS.has(family)) continue;
@@ -75,24 +77,25 @@ function drawGlyphs(el, list, ms, stack) {
   }));
 }
 
-// The stage's sprites, as a retained child view: its description is kept until the plan changes (set_props), so the
-// stage's other redraws (the log, focus, agents) don't rebuild hundreds of animated glyphs, or thousands of layers
-// on macOS. props: { items: [{ key, x, y, w, family, frames, ms, stack }] }.
-class StageSprites extends View {
-  init(p) { this.items = p?.items ?? []; }
-  update(p) { this.items = p?.items ?? []; }
+// One stage sprite as a retained child view (pixel-pane keeps a pool of them): its description is kept until the plan
+// changes (set_props), so the stage's other redraws (the log, focus, agents) don't rebuild the animated glyphs, and a
+// new plan's sprites render one small view at a time: on macOS a battle is thousands of one-colour layers, more than
+// one render may take. props: { it: { x, y, w, family, frames, ms, stack } | null }.
+class StageSprite extends View {
+  init(p) { this.it = p?.it ?? null; }
+  update(p) { this.it = p?.it ?? null; }
   render() {
-    return div().id("stage-sprites").absolute().left(0).top(0).size_full().children(this.items.map((it) => {
-      const el = div().id(`st-${it.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
-        .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap();
-      return drawGlyphs(el, it.frames, it.ms, it.stack);
-    }));
+    const it = this.it;
+    if (!it) return div();
+    const el = div().id("sprite").absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
+      .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap();
+    return drawGlyphs(el, it.frames, it.ms, it.stack);
   }
 }
-const spriteItems = (sc) => (sc?.items ?? []).map((it) => {
+const spriteItem = (it) => {
   const frames = glyphs(it);
-  return { key: it.key, x: it.x, y: it.y, w: it.w, family: it.family, frames, ms: it.ms, stack: stackOf(it.family, frames, it.ms) };
-});
+  return { x: it.x, y: it.y, w: it.w, family: it.family, frames, ms: it.ms, stack: stackOf(it.family, frames, it.ms) };
+};
 
 const makePlan = (job) => ({ base: job.base, full: job.full, at: job.at, sc: job.args ? plan(...job.args) : null });
 const sceneNow = () => (STAGE.scenes[shared("pixel.scene")] ? shared("pixel.scene") : "night");
@@ -112,8 +115,9 @@ export default class PixelPane extends View {
     if (checking()) return;
     if (props()?.stage) {
       const stageFonts = ["Monsters", "Fx", "Props", "Special"].map((k) => `FrierenDot${STAGE.version} ${k}`);
-      this.sprites = cx.new(StageSprites, { items: [] });
-      cx.spawn(async (cx) => { if (await loadLayers([...ROSTER.map(familyOf), ...stageFonts])) this.sprites.set_props({ items: spriteItems(this.cache?.sc) }); });
+      this.pool = []; // StageSprite views, one per item of the shown plan
+      this.feeding = 0;
+      cx.spawn(async (cx) => { if (await loadLayers([...ROSTER.map(familyOf), ...stageFonts])) this.feed(cx); });
       // Planning a long battle takes a while in the app's script engine, and a render that runs too long is cut off,
       // so render only asks for a plan (this.want) and keeps drawing the last one; this makes it and redraws.
       this.timed = true;
@@ -122,7 +126,7 @@ export default class PixelPane extends View {
         if (!job) return;
         this.want = null;
         this.cache = makePlan(job);
-        this.sprites.set_props({ items: spriteItems(this.cache.sc) });
+        this.feed(cx);
         cx.notify();
       });
       // the window's width and the clock's 20-minute slot change without anything else re-rendering us
@@ -146,6 +150,22 @@ export default class PixelPane extends View {
     return panes().find((p) => p.pane === props()?.pane);
   }
 
+  // Hands the plan's items to the sprite views, a few at a time (the macOS layers take a while to work out, and each
+  // view renders once its props arrive), so neither this task nor any render runs long. A newer plan stops an older feed.
+  feed(cx) {
+    const items = this.cache?.sc?.items ?? [];
+    while (this.pool.length < items.length) this.pool.push(cx.new(StageSprite, { it: null }));
+    const run = ++this.feeding;
+    cx.spawn(async (cx) => {
+      let start = Date.now();
+      for (let i = 0; i < this.pool.length; i++) {
+        if (run !== this.feeding) return;
+        this.pool[i].set_props({ it: i < items.length ? spriteItem(items[i]) : null });
+        if (Date.now() - start > 25) { await cx.sleep(16); start = Date.now(); }
+      }
+    });
+  }
+
   check(cx) {
     const p = this.me();
     if (!p?.terminal || !isAgentPane(p) || launched(terminals().find((k) => k.address === p.terminal)?.argv)) {
@@ -159,7 +179,7 @@ export default class PixelPane extends View {
     cx.spawn(async (cx) => {
       let found = { key, at: Date.now(), error: "lookup failed" };
       try {
-        const r = await exec(herdrWindow()?.platform === "windows" ? "python" : "python3", ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
+        const r = await exec(platform() === "windows" ? "python" : "python3", ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
         const out = JSON.parse(r.stdout || "{}");
         found = out.account ? { key, at: Date.now(), account: out.account, model: out.model ?? null } : { key, at: Date.now(), error: out.error || "lookup failed" };
       } catch (e) {
@@ -301,9 +321,11 @@ export default class PixelPane extends View {
     const rim = alpha(t.foreground, "60");
     const strip = div().id("stage-strip").relative().flex_none().w(W * Z).h(STAGE_H).overflow_hidden().border_r(2).border_color(rim)
       .child(image(`mods/pixel-party/scenes/${sceneId}.png`).absolute().left(-off * Z).top(0).w(STAGE.stripWidth * Z).h(STAGE_H))
-      .map((el) => (this.sprites ? el.child(this.sprites) : el.children(spriteItems(sc).map((it) =>
-        drawGlyphs(div().id(`st-${it.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
-          .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap(), it.frames, it.ms, it.stack)))));
+      .map((el) => (this.pool ? el.children(this.pool) : el.children((sc?.items ?? []).map((item) => {
+        const it = spriteItem(item);
+        return drawGlyphs(div().id(`st-${item.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
+          .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap(), it.frames, it.ms, it.stack);
+      }))));
     // the log: what's happening, the line before, and who does what
     const title = !sc ? "No party here" : sc.mode === "battle" ? `BATTLE · vs ${sc.foe}` : sc.mode === "victory" ? "VICTORY" : `CAMP · ${night ? "night" : "day"}`;
     const color = !sc ? t.dim : sc.mode === "battle" ? t.working : sc.mode === "victory" ? t.done : t.muted;

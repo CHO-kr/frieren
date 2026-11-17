@@ -13,7 +13,9 @@ import { character, facePath, entriesFor, settle, alpha, mix } from "./lib.js";
 import { isUnnamed, tabFacts, projectColor, unnamedTip } from "./names.js";
 
 const JOBS_FILE = `${appHome()}/mods/journey-party/jobs.json`;
-const DATA = () => { const p = window()?.platform; return p === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+// window() can be null while the app starts: ask each time, and until it answers tell by the home folder.
+const platform = () => window()?.platform ?? (/^[A-Za-z]:[\\/]/.test(home()) ? "windows" : home().startsWith("/Users/") ? "macos" : "linux");
+const DATA = () => { const p = platform(); return p === "windows" ? `${home()}/AppData/Local/herdr-sessions`
   : p === "macos" ? `${home()}/Library/Caches/herdr-sessions` : `${home()}/.local/share/herdr-sessions`; };
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
 const ROOT_AGAIN = 10 * 60000;

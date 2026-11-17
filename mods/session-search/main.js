@@ -8,9 +8,10 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { home, readTextFile, run, theme, props, closeOverlay, shared, setShared, window } from "herdr";
 
-const PLATFORM = window()?.platform;
-const STORE = () => PLATFORM === "windows" ? `${home()}/AppData/Local/herdr-sessions`
-  : PLATFORM === "macos" ? `${home()}/Library/Caches/herdr-sessions`
+// window() can be null while the app starts: ask each time, and until it answers tell by the home folder.
+const platform = () => window()?.platform ?? (/^[A-Za-z]:[\\/]/.test(home()) ? "windows" : home().startsWith("/Users/") ? "macos" : "linux");
+const STORE = () => platform() === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : platform() === "macos" ? `${home()}/Library/Caches/herdr-sessions`
     : `${home()}/.local/share/herdr-sessions`;
 const KINDS = [{ id: "all", label: "All" }, { id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }];
 const ROW = 38;

@@ -32,10 +32,11 @@ function share(data) {
   if (JSON.stringify(shared("usage.accounts")) !== JSON.stringify(brief)) setShared("usage.accounts", brief);
 }
 
-const PLATFORM = window()?.platform;
-const PY = PLATFORM === "windows" ? "python" : "python3";
-const STORE = () => PLATFORM === "windows" ? `${home()}/AppData/Local/herdr-sessions`
-  : PLATFORM === "macos" ? `${home()}/Library/Caches/herdr-sessions`
+// window() can be null while the app starts: ask each time, and until it answers tell by the home folder.
+const platform = () => window()?.platform ?? (/^[A-Za-z]:[\\/]/.test(home()) ? "windows" : home().startsWith("/Users/") ? "macos" : "linux");
+const PY = () => (platform() === "windows" ? "python" : "python3");
+const STORE = () => platform() === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : platform() === "macos" ? `${home()}/Library/Caches/herdr-sessions`
     : `${home()}/.local/share/herdr-sessions`;
 const CACHE = () => `${STORE()}/usage.json`;
 
@@ -111,7 +112,7 @@ export default class UsageGauge extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/usage-gauge/usage.py`]);
+        const r = await exec(PY(), ["-X", "utf8", `${appHome()}/mods/usage-gauge/usage.py`]);
         if (r.code === 0) {
           this.data = JSON.parse(r.stdout);
           share(this.data);

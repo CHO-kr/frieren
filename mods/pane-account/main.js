@@ -10,7 +10,9 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { panes, props, run, theme, home, appHome, terminals, shared, exec, window } from "herdr";
 
-const PY = window()?.platform === "windows" ? "python" : "python3";
+// window() can be null while the app starts: ask each time, and until it answers tell by the home folder.
+const platform = () => window()?.platform ?? (/^[A-Za-z]:[\\/]/.test(home()) ? "windows" : home().startsWith("/Users/") ? "macos" : "linux");
+const PY = () => (platform() === "windows" ? "python" : "python3");
 
 const isAgent = (p) => p?.program?.key === "claude" || p?.program?.key === "codex" || /claude|codex/i.test(p?.app ?? "");
 
@@ -72,7 +74,7 @@ export default class Pane extends View {
     cx.spawn(async (cx) => {
       let found = { key, at: Date.now(), error: "lookup failed" };
       try {
-        const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
+        const r = await exec(PY(), ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
         const out = JSON.parse(r.stdout || "{}");
         found = out.account ? { key, at: Date.now(), account: out.account, model: out.model ?? null } : { key, at: Date.now(), error: out.error || "lookup failed" };
       } catch (e) {

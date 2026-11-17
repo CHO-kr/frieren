@@ -11,10 +11,11 @@ import { ROSTER, character, cardPath, facePath, entriesFor, agentKey, settle, la
 const HOME = appHome();
 const JOBS_FILE = `${HOME}/mods/journey-party/jobs.json`;
 const WHO = `${HOME}/mods/pane-account/who.py`;
-const PLATFORM = window()?.platform;
-const PY = PLATFORM === "windows" ? "python" : "python3";
-const DATA = () => PLATFORM === "windows" ? `${home()}/AppData/Local/herdr-sessions`
-  : PLATFORM === "macos" ? `${home()}/Library/Caches/herdr-sessions`
+// window() can be null while the app starts: ask each time, and until it answers tell by the home folder.
+const platform = () => window()?.platform ?? (/^[A-Za-z]:[\\/]/.test(home()) ? "windows" : home().startsWith("/Users/") ? "macos" : "linux");
+const PY = () => (platform() === "windows" ? "python" : "python3");
+const DATA = () => platform() === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : platform() === "macos" ? `${home()}/Library/Caches/herdr-sessions`
     : `${home()}/.local/share/herdr-sessions`;
 const STATUS = { working: "Working", blocked: "Needs help", done: "Done", idle: "Resting" };
 const PW = 66;
@@ -80,7 +81,7 @@ export default class JourneyParty extends View {
       cx.spawn(async (cx) => {
         let found = { at: Date.now(), error: "lookup failed" };
         try {
-          const r = await exec(PY, ["-X", "utf8", WHO, a.address]);
+          const r = await exec(PY(), ["-X", "utf8", WHO, a.address]);
           const out = parse(r.stdout || "{}") ?? {};
           found = out.account ? { at: Date.now(), account: out.account, model: out.model ?? null } : { at: Date.now(), error: out.error || "lookup failed" };
         } catch (e) {
