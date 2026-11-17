@@ -268,8 +268,15 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
   words, weight}]`, `folders: {folder: key}`, `enough`; `spaces.example.json` ships next to it; without
   the file it prints no spaces and nothing is sorted). For every session in the three saved lists it
   counts each space's `words` (a case-insensitive regex) in the conversation (Claude: `user` and
-  `assistant` text blocks, not `tool_result`; Codex: `response_item` messages; system and environment
-  preambles skipped) plus 10× in the title, times the space's `weight`. The space a Herdr session ran
+  `assistant` text blocks, not `tool_result`; Codex: `response_item` messages, skipping what Codex adds
+  itself: user messages that start with a tag such as `<environment_context>`, `<recommended_plugins>`,
+  `<skill>` or `<heartbeat>`, except `<send_user_message_question_reply`, `<realtime_delegation`,
+  `<codex_delegation` and `<hc `, plus `# AGENTS.md` and `# In app browser:`) plus 10× in the title,
+  times the space's `weight`. Transcripts are read a line at a time and only lines that look like
+  messages are parsed (one can be gigabytes). Codex's transcript path comes from `state_5.sqlite`
+  (`threads.rollout_path`); when it's gone, `<path>.zst` (Codex compresses older ones) is read with the
+  optional `zstandard` package, whole. `READING` in the script is part of the cache key, so a change to
+  how transcripts are read counts them all again. The space a Herdr session ran
   in (`where`), else the longest matching `folders` entry, doubles its space's count. The best space wins
   with at least `enough` (8); otherwise that ran-in or folder space; otherwise unsorted. Counts are cached in
   `space-cache.json` by transcript size and read offset (new words reset it); more than six new
@@ -340,7 +347,8 @@ each comes from.
 `ctrl-shift-r: layout.toggle:results`. `terminal` → `ctrl-v: smart-paste.paste`.
 
 **Programs it expects**: Windows 10/11, Windows PowerShell 5.1, `python` (3.10+) on PATH with Pillow
-(thumbnails, clipboard images), `ffmpeg` (optional, video posters), `hc` and `git` on PATH, Claude Code at
+(thumbnails, clipboard images) and optionally zstandard (compressed Codex transcripts, for spaces),
+`ffmpeg` (optional, video posters), `hc` and `git` on PATH, Claude Code at
 `~/.local/bin/claude.exe`, the Codex desktop app (its `codex.exe` under
 `%LOCALAPPDATA%\OpenAI\Codex\bin`), and the Claude desktop app for the Claude list. Extra accounts are
 wrappers: `~/.local/bin/claude2.cmd` sets `CLAUDE_CONFIG_DIR=%USERPROFILE%\.claude-2` and runs

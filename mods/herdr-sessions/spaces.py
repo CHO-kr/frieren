@@ -17,8 +17,13 @@
 # session stays unsorted. A right-click in a panel overrides this (shared "sessions.space.assign";
 # the panels apply it). Transcripts are read once and then only what was added (space-cache.json
 # keeps the counts and where reading stopped; new words start the counts over).
+#
+# Codex compresses older transcripts (rollout-….jsonl.zst). Reading those needs the zstandard
+# package (pip install zstandard); without it they are skipped and such threads are sorted by
+# their title and folder only.
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -26,6 +31,11 @@ import sqlite3
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
+
+try:
+    import zstandard
+except ImportError:
+    zstandard = None
 
 HOME = os.path.expanduser("~")
 STORE = os.path.join(os.environ.get("LOCALAPPDATA", HOME), "herdr-sessions")
@@ -53,7 +63,21 @@ SPACES = [s for s in SETUP.get("spaces") or [] if isinstance(s, dict) and s.get(
 WORDS = {s["key"]: (float(s.get("weight") or 1), s.get("words") or "") for s in SPACES}
 PATTERNS = {k: re.compile(p, re.I) for k, (_, p) in WORDS.items() if p}
 ENOUGH = float(SETUP.get("enough") or 8)
-SIGNATURE = hashlib.sha1(json.dumps(sorted((k, p) for k, (_, p) in WORDS.items()), ensure_ascii=False).encode()).hexdigest()
+READING = 3  # how transcripts are read; a change counts every transcript again
+SIGNATURE = hashlib.sha1(json.dumps([READING, sorted((k, p) for k, (_, p) in WORDS.items())], ensure_ascii=False).encode()).hexdigest()
+
+# Codex wraps what it adds to a thread itself (page contents, plugin lists, skills, notifications,
+# heartbeats) in a tag, and what a person types doesn't start with one. These tagged ones are said:
+# answers to the agent's questions, spoken and handed-over requests, messages from other agents.
+SAID_IN_TAGS = ("<send_user_message_question_reply", "<realtime_delegation", "<codex_delegation", "<hc ")
+ADDED = ("# AGENTS.md", "# In app browser:", "<heartbeat")
+
+
+def said(role, text):
+    t = text.lstrip()
+    if t.startswith(ADDED):
+        return False
+    return role != "user" or not t.startswith("<") or t.startswith(SAID_IN_TAGS)
 
 
 def write_atomic(path, text):
@@ -67,48 +91,68 @@ def count(text):
     return {k: len(p.findall(text)) for k, p in PATTERNS.items()}
 
 
-def conversation(kind, line):
-    """The person's and the agent's words in one transcript line, or ''."""
-    head = line[:1500]
+def parse(raw):
+    try:
+        return json.loads(raw.decode("utf-8", "replace"))
+    except ValueError:
+        return {}
+
+
+def conversation(kind, raw):
+    """The person's and the agent's words in one transcript line (bytes), or ''. Only lines that
+    look like messages are parsed: transcripts run to gigabytes, mostly tool output."""
+    head = raw[:6000].decode("utf-8", "replace")[:1500]  # the first 1500 characters
     if kind == "claude":
         if ('"type":"user"' not in head and '"type":"assistant"' not in head) or '"tool_result"' in head:
             return ""
-        try:
-            c = (json.loads(line).get("message") or {}).get("content")
-        except ValueError:
-            return ""
+        c = (parse(raw).get("message") or {}).get("content")
         parts = [c] if isinstance(c, str) else [b.get("text", "") for b in c or [] if isinstance(b, dict) and b.get("type") == "text"]
         return "\n".join(p for p in parts if not p.startswith(("<system-reminder>", "<command-", "<local-command")))
-    if '"response_item"' not in line[:80] or '"message"' not in head:
+    if '"response_item"' not in head[:80] or '"message"' not in head:
         return ""
-    try:
-        p = json.loads(line).get("payload") or {}
-    except ValueError:
-        return ""
+    p = parse(raw).get("payload") or {}
     if p.get("type") != "message" or p.get("role") not in ("user", "assistant"):
         return ""
-    texts = (b.get("text") or "" for b in p.get("content") or [])
-    return "\n".join(t for t in texts if not t.startswith(("<environment_context", "<user_instructions", "# AGENTS.md", "<permissions", "<collaboration")))
+    texts = (b.get("text") or "" for b in p.get("content") or [] if isinstance(b, dict))
+    return "\n".join(t for t in texts if said(p["role"], t))
+
+
+def add(hits, kind, raw):
+    text = conversation(kind, raw)
+    if text:
+        for k, n in count(text).items():
+            hits[k] = hits.get(k, 0) + n
 
 
 def scan(job):
-    """Counts the words added to a transcript since `offset` (whole lines only)."""
+    """Counts the words added to a transcript since `offset`, a line at a time (a last line still
+    being written waits for the next run). A compressed one is finished: it is read whole, and its
+    offset is its size."""
     kind, path, offset, hits = job
     hits = dict(hits or {})
+    if path.endswith(".zst"):
+        if not zstandard:
+            return path, None
+        try:
+            with open(path, "rb") as f:
+                stream = zstandard.ZstdDecompressor().stream_reader(f, read_across_frames=True)
+                for raw in io.BufferedReader(stream, 1 << 20):
+                    add(hits, kind, raw)
+        except (OSError, zstandard.ZstdError):
+            return path, None
+        return path, {"offset": os.path.getsize(path), "hits": hits}
+    end = offset
     try:
         with open(path, "rb") as f:
             f.seek(offset)
-            data = f.read()
+            for raw in f:
+                if not raw.endswith(b"\n"):
+                    break
+                end += len(raw)
+                add(hits, kind, raw)
     except OSError:
         return path, None
-    end = data.rfind(b"\n") + 1
-    for raw in data[:end].split(b"\n"):
-        if raw:
-            text = conversation(kind, raw.decode("utf-8", "replace"))
-            if text:
-                for k, n in count(text).items():
-                    hits[k] = hits.get(k, 0) + n
-    return path, {"offset": offset + end, "hits": hits}
+    return path, {"offset": end, "hits": hits}
 
 
 def norm(p):
@@ -128,11 +172,18 @@ def codex_rollouts():
         try:
             con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
             for tid, rollout in con.execute("select id, rollout_path from threads where rollout_path is not null"):
-                found.setdefault(tid, rollout)
+                found.setdefault(tid, on_disk(rollout))
             con.close()
         except sqlite3.Error:
             continue
     return found
+
+
+def on_disk(rollout):
+    """Where a Codex transcript is now: as recorded, or compressed next to it."""
+    if rollout and not os.path.isfile(rollout) and os.path.isfile(rollout + ".zst"):
+        return rollout + ".zst"
+    return rollout
 
 
 def sessions():
@@ -187,7 +238,9 @@ def main():
         c = cache.get(path)
         if c and c.get("size") == size:
             continue
-        if c and size > c.get("size", 0) and c.get("offset", 0) <= size:
+        if path.endswith(".zst") and not zstandard:
+            continue
+        if c and not path.endswith(".zst") and size > c.get("size", 0) and c.get("offset", 0) <= size:
             jobs.append((kind, path, c["offset"], c.get("hits")))
         else:
             jobs.append((kind, path, 0, None))

@@ -288,10 +288,11 @@ The terminal is left empty in the animation above so each scene is easy to see.
 | Codex desktop app (`%LOCALAPPDATA%\OpenAI\Codex\bin\…\codex.exe`) | the Codex session list and gauges |
 | `git` on PATH | the git summary under each space |
 | `ffmpeg` (optional) | video thumbnails in the results panel |
+| [zstandard](https://pypi.org/project/zstandard/) (optional) | sorting sessions into spaces: Codex compresses older transcripts (`.jsonl.zst`); without it those threads are sorted by title and folder only |
 | numpy, fontTools and scipy (optional) | only to rebuild the pixel sprite fonts (`mods/pixel-party/build`) |
 
 ```powershell
-python -m pip install pillow
+python -m pip install pillow zstandard
 ```
 
 ## Install
