@@ -111,6 +111,36 @@ except (OSError, ValueError):
 for t in threads:
     pair = pairs.get(t["id"])
     t["link"] = pair and {"session": (pair.get("claude") or {}).get("session"), "title": pair.get("title")}
+# Herdr tabs (herdr-sessions\list.py writes derived.json): threads started new there belong to the
+# Herdr sessions panel; threads forked there from this list's, and other accounts' threads made
+# outside Herdr and reopened in a tab, join it.
+try:
+    with open(os.path.join(os.environ.get("LOCALAPPDATA", ""), "herdr-sessions", "derived.json"), encoding="utf-8") as f:
+        herdr = json.load(f)
+except (OSError, ValueError):
+    herdr = {}
+herdr_made = set((herdr.get("herdr") or {}).get("codex") or [])
+threads = [t for t in threads if t["id"] not in herdr_made]
+forks = {r["id"]: r for r in herdr.get("derived") or [] if r.get("kind") == "codex" and r.get("id")}
+for t in threads:
+    r = forks.pop(t["id"], None)
+    if r:
+        t.update({"origin": "derived", "how": r.get("how"), "parent": r.get("parent_title"), "account": r.get("account"),
+                  "terminal": r.get("terminal"), "current": bool(r.get("current"))})
+for r in forks.values():
+    other = strip(r.get("home") or "") or home
+    lock = os.path.join(other, "thread-writer-locks", f"{r['id']}.lock")
+    cwd = strip(r.get("cwd"))
+    threads.append({
+        "id": r["id"], "title": r.get("title") or "", "cwd": cwd, "last": r.get("last"),
+        "model": r.get("model"), "effort": r.get("effort"), "approval": r.get("approval"), "sandbox": r.get("sandbox"),
+        "originator": r.get("originator"), "pin": None, "folder": bool(cwd) and os.path.isdir(cwd),
+        "open": os.path.exists(lock) and held(lock), "link": None,
+        # a thread kept in another account's databases opens from there (sqlite_home)
+        "home": other if os.path.normcase(other) != os.path.normcase(home) else None,
+        "origin": "derived", "how": r.get("how"), "parent": r.get("parent_title"), "account": r.get("account"),
+        "terminal": r.get("terminal"), "current": bool(r.get("current")),
+    })
 threads.sort(key=lambda t: t["last"] or 0, reverse=True)
 text = json.dumps({"home": home, "accounts": accounts, "threads": threads}, ensure_ascii=False)
 # The session-search mod reads the last list from here.

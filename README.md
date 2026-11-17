@@ -1,7 +1,25 @@
 # Frieren: Herdr layouts
 
 Two Windows layouts for the [Herdr](https://herdr.dev) desktop app, made for running several
-**Claude Code** and **Codex** accounts side by side, dressed as a fantasy party from *Frieren*:
+**Claude Code** and **Codex** accounts side by side, dressed as a fantasy party from *Frieren*.
+
+**Made for people who use Herdr together with the Claude and Codex desktop apps.** Your app sessions
+and your Herdr terminals stop being two separate worlds:
+
+- **Every desktop app session, in Herdr's sidebar.** The Claude desktop app's sessions and the Codex
+  desktop app's threads are listed by date; click one to continue it in a Herdr tab, in its folder,
+  with whichever account you like. One that's still open in the app is marked (`app`, `open`), and
+  you're asked before it could be typed into from both places (continue, or open a copy).
+- **Sessions you start in Herdr get their own list.** The **Herdr sessions** panel collects the Claude
+  and Codex sessions started in Herdr tabs, with every account, and keeps them after the tab is
+  closed. Copies you make in Herdr of an app session, and sessions from another terminal, go back to
+  the Claude or Codex list, next to where they came from.
+- **Switch freely.** Continue any session with another account, hand it from Claude to Codex or
+  back, and find any of them with `Ctrl+Shift+S`.
+- **Every account at a glance.** Each Claude and Codex account's plan usage sits in the top bar, a ★
+  marks the one with the most left, and the `+` menu starts an agent with any account.
+
+The two layouts:
 
 - **Frieren Pixel** (`frieren-pixel`, new): 16-bit pixel art. Every agent is a little pixel party
   member who acts out what the agent is doing right now, and the panes of the shown tab fight, camp
@@ -10,9 +28,9 @@ Two Windows layouts for the [Herdr](https://herdr.dev) desktop app, made for run
 - **Frieren Journey** (`frieren-journey`): painted portraits and a Frieren wallpaper behind
   translucent terminals.
 
-Both share the same tools underneath: every saved Claude and Codex session one click away, every
-account's plan usage in the top bar, and the account and model on every pane. Pick one in
-**Settings → Look → Layout**, or cycle with `Ctrl+Shift+L`.
+Both share the same tools underneath: the three session lists, every account's plan usage in the
+top bar, and the account and model on every pane. Pick one in **Settings → Look → Layout**, or cycle
+with `Ctrl+Shift+L`.
 
 ![Frieren Pixel layout in Herdr](docs/frieren-pixel.png)
 
@@ -208,14 +226,25 @@ The terminal is left empty in the animation above so each scene is easy to see.
 ## In both layouts
 
 - **Journey · Day N** in the top-left corner, counted from the day you first open either layout.
-- **Session lists for Claude and Codex**: every saved session in the sidebar, grouped by date
-  (Today, Yesterday, Last 7 days, …), with live status marks (working, needs you, done, idle) and
-  `All · 7d · 30d · Older` filters with counts under the header. Click to resume in its folder. If a terminal already runs it, that terminal gets focus.
+- **Session lists for Claude and Codex**: every session the Claude and Codex desktop apps saved, in
+  the sidebar, grouped by date (Today, Yesterday, Last 7 days, …), with live status marks (working,
+  needs you, done, idle) and `All · 7d · 30d · Older` filters with counts under the header. Click to
+  resume in its folder. If a terminal already runs it, that terminal gets focus. A session still open
+  in the desktop app is tagged `app` (Claude) or `open` (Codex, also when another terminal has it).
+  Opening such a Claude session, or such a Codex thread with another account, asks first: continue (and
+  stop typing in the other place), or open a copy that leaves the original alone. Copies of these
+  sessions made in Herdr tabs, and sessions made in another terminal and reopened in a tab, are listed
+  here too, with where they came from on hover.
+- **Herdr sessions**: the Claude and Codex sessions started new in Herdr tabs, with every account
+  (`claude`, `claude2`, …, `codex`, `codex2`, …), so they don't get lost among the app's. It finds them
+  under the tabs' processes every 30 seconds and keeps them after the tab closes. `All · Claude ·
+  Codex` filters; a click goes to the session's tab, or resumes it in a new one with the account that
+  made it; right-click for another account, a copy, or to hide it.
 - **Switch accounts or agents per session**: right-click a session to continue it with another
   account, or hand it to the other agent (Claude → Codex, Codex → Claude). Handed-over pairs are
   remembered (`⇄`), and later moves pass on only the new turns.
 - **Session search** (`Ctrl+Shift+S`): a popup that searches every session by title and folder, with
-  All / Claude / Codex filters and keyboard navigation.
+  All / Herdr / Claude / Codex filters (one per list) and keyboard navigation.
 - **Usage gauges**: one chip per account in the top bar with its weekly or 5-hour usage, colored by how
   full it is (blue → yellow at 70% → red at 90%). Codex chips also show credits and free reset passes.
   Hover for every window and its reset time. Click to refresh.
@@ -305,7 +334,7 @@ foreach ($m in Get-ChildItem "$env:TEMP\frieren\mods" -Directory) { herdr-app ch
 herdr-app do layout.switch --name frieren-pixel     # or frieren-journey
 ```
 
-Install all eighteen mods, even if you want only one layout. Eight tool mods collect usage, session
+Install all nineteen mods, even if you want only one layout. Nine tool mods collect usage, session
 lists and accounts. The four `journey-*` mods draw Frieren Journey, and the six `pixel-*` mods draw
 Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spaces/places.json` and
 `pane-account`.
@@ -318,7 +347,7 @@ Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spac
 | Click a party card | focus that agent's terminal |
 | Rename a tab to `Fern`, `Stark`, … | that tab's agent becomes that character |
 | Click **Journey · Day N** (Frieren Pixel) | skip to the next background scene (its colors and monster come with it) |
-| Click a session in **Claude sessions** / **Codex sessions** | resume it in a new tab in its folder, or focus it if it's already open |
+| Click a session in **Herdr sessions** / **Claude sessions** / **Codex sessions** | resume it in a new tab in its folder, or focus it if it's already open |
 | Right-click a session | continue with another account, hand over to the other agent, or hide it |
 | `Ctrl+Shift+S` | search every session. `Tab` switches filter, `↑`/`↓` move, `Enter` opens, `Esc` closes |
 | Click / hover a usage chip | refresh now / see every window, its reset time, plan and login |
@@ -390,15 +419,17 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
 These mods are trusted code that runs on your machine. Before installing, know that they:
 
 - **run programs**: `python`, `powershell`, `codex.exe app-server`, `hc` (including `hc read` on
-  each agent's terminal, to see which tool it runs), `explorer`, and `git status` / `git rev-parse` in
-  each terminal's folder.
+  each agent's terminal, to see which tool it runs, and `hc ls` / `hc get` to find the sessions Herdr
+  tabs run), `explorer`, and `git status` / `git rev-parse` in each terminal's folder.
 - **read files outside their folder**: your Claude and Codex homes, the desktop apps' session data,
-  and each account's login credentials (to read usage).
+  and each account's login credentials (to read usage). The Herdr sessions panel also lists the
+  processes under Herdr's terminals and asks Windows which of them holds a Codex thread's lock file.
 - **use the network**: each Claude account's OAuth access token goes only to `api.anthropic.com`
   (usage and profile; never printed, stored or refreshed), and the Codex app-server talks to OpenAI.
   Nothing else goes out. What the party reads from agent screens stays on your machine.
-- **write** caches to `%LOCALAPPDATA%\herdr-sessions`, `%LOCALAPPDATA%\herdr-claude-sessions` and
-  `~/.config/herdr-app/.thumbs`. Frieren Pixel also rewrites the background and color lines of its
+- **write** caches to `%LOCALAPPDATA%\herdr-sessions` (including `herdr-made.json`, the sessions
+  started in Herdr), `%LOCALAPPDATA%\herdr-claude-sessions` and `~/.config/herdr-app/.thumbs`. Nothing
+  writes to Claude's or Codex's own files. Frieren Pixel also rewrites the background and color lines of its
   own layout file once an hour.
 
 Spending a Codex reset pass is permanent. It always asks for confirmation first.
@@ -410,6 +441,8 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
   does nothing: use `Ctrl+Shift+V`, or remove the `terminal` → `ctrl-v` key.
 - The Claude list needs the Claude desktop app. Without the Codex app's `state_5.sqlite`, the Codex list
   shows a read error.
+- The Herdr sessions panel looks at the tabs every 30 seconds, so a session whose tab closes sooner
+  than that may not be listed.
 - The Claude usage endpoint rate-limits frequent polling. The gauges read every 5 minutes and wait
   out `Retry-After` (`wait`).
 - An account whose usage has no 5-hour window shows HP as `—`.
@@ -420,8 +453,8 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
 ## Uninstall
 
 Delete `layouts/frieren-*`, `themes/frieren-*`, `backgrounds/frieren.jpg`,
-`backgrounds/frieren-pixel-*.png`, the eighteen folders in `mods/` (`usage-gauge`,
-`claude-sessions`, `codex-sessions`, `session-menu`, `session-search`, `pane-account`, `results-panel`,
+`backgrounds/frieren-pixel-*.png`, the nineteen folders in `mods/` (`usage-gauge`,
+`herdr-sessions`, `claude-sessions`, `codex-sessions`, `session-menu`, `session-search`, `pane-account`, `results-panel`,
 `smart-paste`, `journey-chrome`, `journey-spaces`, `journey-party`, `journey-tabs`, `pixel-chrome`,
 `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`) and the keys above. Switch back with
 `Ctrl+Shift+L`.
@@ -438,7 +471,7 @@ mods/pixel-*                    the six Frieren Pixel mods: sprite, monster, eff
                                 the stage strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
 mods/pixel-party/build/         scripts and cut sprites that build all of the above
 mods/journey-*                  the four Frieren Journey mods (with their pictures)
-mods/ (the rest)                eight tool mods both layouts use
+mods/ (the rest)                nine tool mods both layouts use (session lists, usage, accounts, …)
 keys.json                       the key bindings to merge
 RECIPE.md                       the full build brief (exact sizes, colors, behavior)
 preview.png                     the picture the Herdr gallery shows (Frieren Pixel)

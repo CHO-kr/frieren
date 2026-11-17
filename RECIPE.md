@@ -1,15 +1,17 @@
 # Frieren
 
-Two Windows layouts for running several Claude Code and Codex accounts side by side, dressed as a
-fantasy party from *Frieren*. In Frieren Pixel every agent is a 16-bit pixel party member who fights,
-casts and camps as its agent works; Frieren Journey has painted portraits behind translucent
-terminals. Both list every saved session and show each account's usage.
+Two Windows layouts for people who use Herdr together with the Claude and Codex desktop apps: every
+app session and every session started in Herdr is in the sidebar, one click from a Herdr tab, with any
+of your Claude and Codex accounts and each one's usage in view. Dressed as a fantasy party from
+*Frieren*: in Frieren Pixel every agent is a 16-bit pixel party member who fights, casts and camps as
+it works; Frieren Journey has painted portraits behind translucent terminals.
 
 ![Frieren](preview.png)
 
 The two layouts are Frieren Pixel (`frieren-pixel`) and Frieren Journey (`frieren-journey`). Both
-list every saved Claude and Codex session (click to resume, right-click to switch account or agent),
-show each account's plan usage, and say which account and model each pane runs on. UI text is English.
+have three session lists: the Claude desktop app's sessions, the Codex desktop app's threads, and
+the sessions started in Herdr tabs (click to resume, right-click to switch account or agent). Both
+show each account's plan usage and say which account and model each pane runs on. UI text is English.
 
 This file describes Frieren Journey first. [Frieren Pixel](#frieren-pixel) at the end is built on top
 of it and lists only what differs.
@@ -35,8 +37,9 @@ Corners are square and frames are gold.
 - Brand row, 46px (`journey-chrome`, `window_drag`): Frieren's face (22px) in a gold frame, `Herdr`, then
   `Journey · Day N` (11px, `accent`; tooltip `Journey started: YYYY-MM-DD`), a search button (opens
   `picker`) and the sidebar toggle.
-- Four lists by weight: Spaces (`journey-spaces`, 0.55, min 110), Party (`journey-party`, 2.0, min 140),
-  Claude sessions (`claude-sessions`, 0.9, min 120), Codex sessions (`codex-sessions`, 0.9, min 120).
+- Five lists by weight: Spaces (`journey-spaces`, 0.55, min 110), Party (`journey-party`, 2.0, min 140),
+  Herdr sessions (`herdr-sessions`, 0.9, min 120), Claude sessions (`claude-sessions`, 0.9, min 120),
+  Codex sessions (`codex-sessions`, 0.9, min 120).
 - Footer, 69px (`journey-chrome` with `footer: true`): Settings, Add machine.
 
 **Spaces** (`journey-spaces`): header `Spaces · Destinations`. Each space row is 80px: a 68px framed
@@ -61,14 +64,17 @@ focused, else `border`):
   longest). The tooltip says the window, what's left, what's used and when it resets.
 - Folded sidebar: a column of 34px faces with a 7px status dot. Clicking a card or face focuses the agent.
 
-**Session lists** (Claude and Codex look the same): a header row (41px; title 11.5px in `dim`, a search
-icon and a refresh icon that turns into a spinner while reading). Then sessions grouped by date: Today,
+**Session lists** (Herdr, Claude and Codex look the same): a header row (41px; title 11.5px in `dim`, a search
+icon and a refresh icon that turns into a spinner while reading), then a slim 18px row of filter chips
+with counts (Claude and Codex: `All · 7d · 30d · Older`; Herdr: `All · Claude · Codex`). Then sessions grouped by date: Today,
 Yesterday, Last 7 days, Last 30 days, Older. Codex puts a Pinned group first, and hidden sessions go to a
 Hidden group at the end. Group headers are 11px `dim`; a folded group shows its count and a chevron. Rows
 are 30px, rounded 8px: a status mark (spinner = working, hollow ring = idle, filled dot in the `blocked` /
 `done` color, nothing = not open), the title (13px; `dim` when it can't be opened), `⇄` in `accent` when
 paired with the other agent, a tag (`app` = the Claude desktop app has it open, `open` = another app holds
 the Codex thread), and the age (`now`, `5m`, `3h`, `2d`) in 11px `dim`. The row of the focused agent is `selected`.
+Herdr rows put a 12px Claude or Codex icon before the title and the account (`claude2`, `codex3`) in a
+small `raised` tag instead of `⇄`/`app`.
 
 **Top bar** (58px row):
 - `usage` block, 818px: one chip per account, 2px apart. Claude chips (78×32px) show the name and the
@@ -140,7 +146,13 @@ Translucency is in the alpha: `chrome` `#0d1427c8`, `surface` `#111a30c8`, `popo
   `claude --resume <transcript path> [--model] [--effort] [--permission-mode | --dangerously-skip-permissions]`
   with the desktop app's settings. Codex runs `codex resume <id> [-s danger-full-access] [-a never|on-request]`.
   If the Claude desktop app (or, for another Codex account, another app) has it open, a dialog asks:
-  Cancel / Open a copy (fork) / Continue as `<account>`.
+  Cancel / Open a copy (fork) / Continue as `<account>`. A Herdr sessions row resumes with the account
+  that made it (`claude2 --resume <path>`, `codex3 resume <id>`), and its right click offers that
+  agent's other accounts, Open a copy, and Hide.
+- **Which list a session is in**: the Claude and Codex lists hold the desktop apps' sessions. A session
+  started new in a Herdr tab goes to Herdr sessions (and is left out of the Codex list). A copy made in a
+  Herdr tab of an app session, and a session made in another terminal and reopened in a tab, go to the
+  Claude or Codex list, their tooltip saying `Forked in a Herdr tab from «…»` or `Made outside Herdr`.
 - **Session row right click**: a popup with every account of that agent ("Continue with a Claude
   account", each with its login email), every account of the other agent ("Hand over to Codex" /
   "Hand over to Claude"), and Hide from panel / Show again. Handing work over keeps one session per side.
@@ -170,11 +182,11 @@ Translucency is in the alpha: `chrome` `#0d1427c8`, `surface` `#111a30c8`, `popo
 
 Files in this folder, laid out like `~/.config/herdr-app`:
 `layouts/frieren-journey.json` (+ `frieren-journey.png`, the settings preview),
-`themes/frieren-journey.json`, `backgrounds/frieren.jpg`, `keys.json`, and twelve mods in `mods/`.
+`themes/frieren-journey.json`, `backgrounds/frieren.jpg`, `keys.json`, and thirteen mods in `mods/`.
 
 **Node tree**: `root` row (divider 1px `border`) → `sidebar` column (268px, min 44, max 480, not
 resizable) [`brand` block (`journey-chrome`, 46px, `window_drag`), `sidebar-lists` column [`spaces`
-(`journey-spaces`), `agents` (`journey-party`), `claude-sessions`, `codex-sessions`], `sidebar-footer`
+(`journey-spaces`), `agents` (`journey-party`), `herdr-sessions`, `claude-sessions`, `codex-sessions`], `sidebar-footer`
 block (`journey-chrome` props `{footer: true}`, 69px)] and `work` column [`topbar` row 58px [`usage`
 (`usage-gauge`, 818px, `window_drag`), `tabs` (`journey-tabs`, `window_drag`), `smart-paste` (0px)],
 `work-body` row (padding 8, gap 8) [`main` block `{tab: "active", pane: {header: {content: {mod:
@@ -210,8 +222,11 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
   Claude desktop app's `%LOCALAPPDATA%\Claude-Data\claude_*\claude-code-sessions\*\*\local_*.json`
   (cached by size and time in `%LOCALAPPDATA%\herdr-claude-sessions\cache.json`). It finds transcripts in
   `~/.claude/projects/*/*.jsonl`, marks sessions the desktop app runs (from `claude.exe` command lines),
-  adds pairs from `links.json`, lists accounts with their email and default model, and saves
-  `%LOCALAPPDATA%\herdr-sessions\claude-list.json`. Sets shared `sessions.claude`. Takes
+  adds pairs from `links.json` and the Claude rows of `derived.json` (written by `herdr-sessions`:
+  sessions forked in a Herdr tab from these, or made outside Herdr and reopened in a tab; `origin:
+  "derived"`, `how`, `parent`, `account`, `terminal`, `current`), lists accounts with their email and
+  default model, and saves `%LOCALAPPDATA%\herdr-sessions\claude-list.json`. A derived session's
+  running tab is its `terminal` when `current`. Sets shared `sessions.claude`. Takes
   `claude-sessions.request` (reads shared `sessions.request.claude`). Hidden ids are in shared `sessions.hidden.claude`.
 - `codex-sessions` (`main.js`, `list.py`, `refresh.svg`): `list.py` reads `<CODEX_HOME>/state_5.sqlite`
   read-only (`threads` where `archived = 0`, `source in ('cli','vscode')`). Pins come from
@@ -219,7 +234,23 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
   `thread-writer-locks/<id>.lock` is locked (`msvcrt.locking`). Accounts come with the models their plan
   lists (`models_cache.json`) and a `best` model. Saves `codex-list.json`. Another account resumes with
   `-c sqlite_home=<main CODEX_HOME>`, plus `-m <best>` when the thread's model isn't on its plan.
+  From `derived.json` it drops the threads started in Herdr (`herdr.codex`), and marks (or adds, when
+  another account's home holds them) the threads forked in a Herdr tab and the ones made outside Herdr
+  and reopened in a tab.
   Shared `sessions.codex`, `sessions.request.codex`, `sessions.hidden.codex`.
+- `herdr-sessions` (`main.js`, `list.py`; `mod.json` title `Herdr sessions`): every 30 s runs
+  `python -X utf8 list.py`. It takes the live terminals with a `herdr.space` label (`hc ls --json`,
+  `hc get <t>`) and the processes under each (toolhelp snapshot). A `claude.exe` names its session in
+  `<config>/sessions/<pid>.json` (each account's config from `~/.local/bin/claude*.cmd`
+  `CLAUDE_CONFIG_DIR`); a `codex.exe` holds `<CODEX_HOME>/thread-writer-locks/<id>.lock` (which process,
+  from the Windows Restart Manager; on Codex's shared daemon, the thread is matched to the tab by folder,
+  the tab's title and start time). Found sessions are kept in `%LOCALAPPDATA%\herdr-sessions\herdr-made.json`
+  with a `root` decided once: `herdr` (started new in Herdr, or forked from such a session: listed here),
+  `desktop` (an app session, or forked from one: `derived.json`, how `fork`) or `outside` (older than
+  the tab's program: `derived.json`, how `outside`). Prints `{accounts, sessions}` and saves
+  `herdr-list.json`. Rows: kind, account, title (Claude: custom or AI title from the transcript; Codex:
+  the thread's name), cwd, last activity. Shared `sessions.request.herdr`, `sessions.hidden.herdr`.
+  It never writes to Claude's or Codex's own files.
 - `session-menu` (`main.js`, `bridge.py`): draws the popup menu (`props.menu`) and the confirm dialog
   (`props.confirm`). Actions are data: `tab`, `focus`, `confirm`, `hide`, `toCodex`, `toClaude`,
   `resetPass`. `bridge.py to-codex <jsonl> <cwd> <title>` / `to-claude <thread> <claude config dir>`
@@ -227,8 +258,10 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
   (at most 120,000 characters, keeping the first request and the newest turns) and uses the app-server's
   `externalAgentConfig/import` for the first Claude→Codex move.
 - `session-search` (`main.js`; `mod.json` overlay: popup, `at: "top"`, offset 40, 680 × 0.8): reads the
-  two saved lists with `readTextFile`. It hands the pick over by setting `sessions.request.<agent>` and
-  running `<agent>-sessions.request`. Shared `sessions.search.kind` picks the starting chip.
+  three saved lists (`herdr-list.json`, `claude-list.json`, `codex-list.json`) with `readTextFile`.
+  Chips All / Herdr / Claude / Codex, one per list; Herdr rows carry a `herdr · <account>` tag. It
+  hands the pick to the list that owns it by setting `sessions.request.<panel>` and running
+  `<panel>-sessions.request`. Shared `sessions.search.kind` picks the starting chip.
 - `pane-account` (clone of shipped `pane`; `main.js`, `who.py`, five 16px stroke icons): finds its pane
   in `panes()`. Account and `--model` come from `terminals()` argv (a word matching `claude\d*`/`codex\d*`).
   Otherwise `python who.py <terminal>`, which gets the shell pid from `hc get <t> --json`, walks the
@@ -291,6 +324,10 @@ at the same paths if you like.
   `api.anthropic.com` (usage and profile only; never printed, stored or refreshed), and the Codex
   app-server talks to OpenAI. They write to `%LOCALAPPDATA%\herdr-sessions`,
   `%LOCALAPPDATA%\herdr-claude-sessions` and `~/.config/herdr-app/.thumbs`.
+- `herdr-sessions` sees a session only while its tab runs and checks every 30 s, so one whose tab
+  closes sooner can be missed. A Codex tab on the shared daemon is matched by folder, title and start
+  time: two daemon tabs in one folder started together can swap. Run Codex with `--no-daemon` under
+  Herdr (this lock is then the tab's own).
 - Spending a Codex reset pass can't be undone. Keep it behind the confirm dialog, and never spend one
   while testing (`reset.py --dry-run` lists them).
 - The Claude usage endpoint is shared with Claude Code itself and answers 429 when polled often. Honor
@@ -320,10 +357,14 @@ at the same paths if you like.
 
 ## Done when
 
-- `herdr-app check` passes for each of the twelve mod folders, and
+- `herdr-app check` passes for each of the thirteen mod folders, and
   `layout.switch {name: "frieren-journey"}` shows the wallpaper through 40%-opaque terminals,
-  `Journey · Day 1`, a place painting per space, one card per running agent, the two session lists, the
+  `Journey · Day 1`, a place painting per space, one card per running agent, the three session lists, the
   gauges and the face tabs in one 58px bar, and 30px pane headers.
+- Starting `claude2` in a new Herdr tab adds a row to Herdr sessions (Claude icon, `claude2` tag)
+  within 30 seconds, and it stays after the tab is closed; clicking it resumes it with `claude2`. A
+  copy of a desktop app session made in a tab (`--fork-session`) shows in the Claude list instead,
+  its tooltip naming the original.
 - Within a few seconds of opening, every account has a chip with a %, or `wait` with the wait in its
   tooltip. A click re-reads, and the tooltip lists every window with its reset time.
 - A working agent's card turns its magic circle; an idle one shows `z z z`. MP is 100 minus the weekly %
@@ -358,13 +399,13 @@ scenes take turns as the background, one per hour, and the whole palette follows
 
 **Files**: `layouts/frieren-pixel.json` (+ `frieren-pixel.png`), `themes/frieren-pixel.json`,
 `backgrounds/frieren-pixel-<scene>.png` (7 scenes, 512×288 art shown ×5 at 2560×1440, 64 colors), and
-six mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`. The eight tool mods
+six mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`. The nine tool mods
 are the same. The pixel mods also read `mods/journey-party/jobs.json`, `mods/journey-spaces/places.json`
 and run `mods/pane-account/who.py`, so the journey mods must be installed too.
 
 **Node tree**: like Journey's, with these changes. `root` row padding 8, gap 8. `sidebar` column 292px
 (min 64, max 480, gap 8): `brand` (`pixel-chrome`, 52px), `spaces` (`pixel-spaces`, weight 0.6),
-`agents` (`pixel-party`, weight 2), `claude-sessions`, `codex-sessions` (0.9 each), `sidebar-footer`
+`agents` (`pixel-party`, weight 2), `herdr-sessions`, `claude-sessions`, `codex-sessions` (0.9 each, min 120), `sidebar-footer`
 (`pixel-chrome` props `{footer: true}`, 64px). `topbar` row 56px, gap 8: `usage` (`usage-gauge` props
 `{font: "Galmuri9", size: 10}`, weight 1), `tabs` (`pixel-tabs`, weight 1.3), `smart-paste` (0px). Both
 are weighted, not fixed: a fixed usage width pushed the window buttons out of a non-maximized window
@@ -563,7 +604,8 @@ loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` a
 - `pixel-chrome` (`main.js`, `icons/` 8×8 pixel SVGs, `fonts/`): the brand row (Frieren's face,
   `HERDR`, `Journey · Day N`, search, fold) and the footer (Settings, Add machine). The day counts from
   the earlier of its own start and `data/journey-chrome/store.json`, so both layouts agree. Folding saves
-  the width in shared `pixel.sidebar.width`, hides the two session lists and resizes `sidebar` to 64px.
+  the width in shared `pixel.sidebar.width`, hides the three session lists (`RAIL_HIDES`) and resizes
+  `sidebar` to 64px.
 - `lib.js` is the same file in `pixel-party`, `pixel-tabs` and `pixel-pane`: change all three. It
   holds `ROSTER` (16 characters with name, role, color and attack style: `bolt`, `slash`, `holy`),
   `ANIMS`, `battleLine` and `classify`. Character picks are shared with Journey (`journey.party`).

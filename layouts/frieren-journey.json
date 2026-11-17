@@ -36,6 +36,13 @@
               "min": 140
             },
             {
+              "id": "herdr-sessions",
+              "type": "block",
+              "content": { "mod": "herdr-sessions" },
+              "size": { "weight": 0.9 },
+              "min": 120
+            },
+            {
               "id": "claude-sessions",
               "type": "block",
               "content": { "mod": "claude-sessions" },

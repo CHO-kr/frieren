@@ -1,6 +1,7 @@
 // Finds a Claude or Codex session by its title or folder (Ctrl+Shift+S, or a panel's search
 // button). Type to filter (every word must match), ↑/↓ and Enter to open, a right click for the
-// panel's menu, Tab or the chips to switch between all / Claude / Codex, Esc to leave.
+// panel's menu, Tab or the chips to switch between all / Herdr / Claude / Codex (the three
+// session panels), Esc to leave.
 // It reads the lists the session panels last saved and hands the pick to that panel, so opening
 // works exactly like a click there (accounts, the desktop app question, a tab already open).
 
@@ -9,7 +10,7 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { home, readTextFile, run, theme, props, closeOverlay, shared, setShared } from "herdr";
 
 const STORE = () => `${home()}/AppData/Local/herdr-sessions`;
-const KINDS = [{ id: "all", label: "All" }, { id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }];
+const KINDS = [{ id: "all", label: "All" }, { id: "herdr", label: "Herdr" }, { id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }];
 const ROW = 38;
 const SHOWN = 11;
 
@@ -53,15 +54,22 @@ export default class SessionSearch extends View {
       };
       const claude = await read("claude-list.json");
       const codex = await read("codex-list.json");
+      const herdr = await read("herdr-list.json");
       const hiddenClaude = new Set(shared("sessions.hidden.claude") ?? []);
       const hiddenCodex = new Set(shared("sessions.hidden.codex") ?? []);
+      const hiddenHerdr = new Set(shared("sessions.hidden.herdr") ?? []);
+      // panel: the list that owns it and opens it; agent: Claude or Codex
       this.items = [
+        ...(herdr?.sessions ?? []).map((s) => ({
+          panel: "herdr", agent: s.kind, id: s.key, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
+          account: s.account, busy: s.current ? "open" : null, hidden: hiddenHerdr.has(s.key),
+        })),
         ...(claude?.sessions ?? []).filter((s) => !s.archived).map((s) => ({
-          agent: "claude", id: s.cli, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
+          panel: "claude", agent: "claude", id: s.cli, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
           linked: Boolean(s.link), busy: s.desktop ? "app" : null, hidden: hiddenClaude.has(s.cli),
         })),
         ...(codex?.threads ?? []).map((s) => ({
-          agent: "codex", id: s.id, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
+          panel: "codex", agent: "codex", id: s.id, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
           linked: Boolean(s.link), busy: s.open ? "open" : null, hidden: hiddenCodex.has(s.id),
         })),
       ].sort((a, b) => b.last - a.last);
@@ -75,7 +83,7 @@ export default class SessionSearch extends View {
 
   rows() {
     const words = this.filter.toLowerCase().split(/\s+/).filter(Boolean);
-    return this.items.filter((s) => (this.kind === "all" || s.agent === this.kind) &&
+    return this.items.filter((s) => (this.kind === "all" || s.panel === this.kind) &&
       words.every((w) => `${s.title} ${s.cwd ?? ""}`.toLowerCase().includes(w)));
   }
 
@@ -83,8 +91,8 @@ export default class SessionSearch extends View {
   pick(s, what) {
     if (!s) return;
     this.close();
-    setShared(`sessions.request.${s.agent}`, { id: s.id, what, at: Date.now() });
-    run(`${s.agent}-sessions.request`);
+    setShared(`sessions.request.${s.panel}`, { id: s.id, what, at: Date.now() });
+    run(`${s.panel}-sessions.request`);
   }
 
   setKind(kind, cx) {
@@ -108,7 +116,7 @@ export default class SessionSearch extends View {
     const row = (s, i) => {
       const on = this.top + i === this.at;
       return h_flex()
-        .id(`ss-${s.agent}-${s.id}`)
+        .id(`ss-${s.panel}-${s.id}`)
         .mx(4)
         .px(10)
         .h(ROW)
@@ -128,6 +136,7 @@ export default class SessionSearch extends View {
           .child(div().truncate().text_color(s.hidden ? t.dim : t.foreground).child(s.title))
           .child(div().truncate().text_size(10.5).text_color(t.dim).child(s.cwd ?? "")))
         .when(s.linked, (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("⇄")))
+        .when(s.panel === "herdr", (el) => el.child(tag(`herdr · ${s.account}`, t.accent)))
         .when(s.hidden, (el) => el.child(tag("hidden", t.dim)))
         .when(Boolean(s.busy), (el) => el.child(tag(s.busy, t.dim)))
         .child(div().w(40).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(s.last)));
@@ -191,6 +200,6 @@ export default class SessionSearch extends View {
         .when(!rows.length, (el) => el.child(div().px(14).py(10).text_size(12).text_color(t.dim)
           .child(this.items.length ? "No matching sessions." : "Reading the lists… (search works once the panels have read them)")))
         .children(shown.map(row)))
-      .child(div().text_size(10.5).text_color(t.dim).child("Enter open · Right-click other account or agent · Tab switch All / Claude / Codex"));
+      .child(div().text_size(10.5).text_color(t.dim).child("Enter open · Right-click other account or agent · Tab switch All / Herdr / Claude / Codex"));
   }
 }

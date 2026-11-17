@@ -68,8 +68,10 @@ function argvFor(s, account, fork) {
 }
 
 // A tab started here runs `& 'claude' '--resume' '<id or path>' ...` in its shell, so the id finds it.
+// A session forked in a Herdr tab has a new id; the Herdr sessions panel says which tab runs it.
 const terminalFor = (s, all) =>
-  all.find((k) => k.state === "live" && k.labels?.["herdr.space"] && (k.argv ?? []).some((a) => String(a).includes(s.cli)));
+  all.find((k) => k.state === "live" && k.labels?.["herdr.space"] && (k.argv ?? []).some((a) => String(a).includes(s.cli))) ??
+  (s.current && s.terminal ? all.find((k) => k.state === "live" && k.address === s.terminal) : undefined);
 
 const MAIN = { name: "claude", cmd: "claude", main: true };
 
@@ -229,7 +231,10 @@ export default class ClaudeSessions extends View {
       const k = terminalFor(s, all);
       const a = k && live.get(k.address);
       const off = !s.resumable || !s.folder;
-      const tip = [s.cwd, s.origin === "herdr" ? "Session made in Herdr from a Codex handover" : `${s.turns ?? 0} turns · ${s.model ?? ""} · ${s.effort ?? ""}`,
+      const tip = [s.cwd, s.origin === "herdr" ? "Session made in Herdr from a Codex handover"
+        : s.origin === "derived" && s.how === "outside" ? `Made outside Herdr, reopened in a Herdr tab · ${s.account ?? ""}`
+        : s.origin === "derived" ? `Forked in a Herdr tab${s.parent ? ` from «${s.parent}»` : ""} · ${s.account ?? ""}`
+        : `${s.turns ?? 0} turns · ${s.model ?? ""} · ${s.effort ?? ""}`,
         s.link ? `⇄ Paired with Codex task «${s.link.title}»: each handover adds to both` : null,
         s.desktop ? "Open in the desktop app" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Codex"]
         .filter(Boolean)

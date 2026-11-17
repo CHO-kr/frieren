@@ -47,6 +47,15 @@
               "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
             },
             {
+              "id": "herdr-sessions",
+              "type": "block",
+              "content": { "mod": "herdr-sessions" },
+              "size": { "weight": 0.9 },
+              "min": 120,
+              "border": { "width": 2, "color": "#efe6c8" },
+              "background": { "gradient": ["#1c2a74f0", "#0c123ff0"], "angle": 180 }
+            },
+            {
               "id": "claude-sessions",
               "type": "block",
               "content": { "mod": "claude-sessions" },

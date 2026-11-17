@@ -23,7 +23,7 @@ const FOLDED = 64; // the sidebar column has 8 px padding on each side: 48 px of
 
 // The unfolded width is kept under this layout's own key: journey-chrome's "sidebar.width" is the journey layout's.
 // The session lists have no folded form, so they hide while the sidebar is a rail.
-const RAIL_HIDES = ["claude-sessions", "codex-sessions"];
+const RAIL_HIDES = ["herdr-sessions", "claude-sessions", "codex-sessions"];
 function toggleSidebar() {
   const folding = !narrow();
   const width = find(layout(), "sidebar")?.size?.px;

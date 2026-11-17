@@ -106,6 +106,27 @@ foreach ($l in $links) {
   $d['desktop'] = $false; $d['origin'] = 'herdr'; $d['link'] = $pair
   $list.Add($d)
 }
+# Sessions forked in Herdr tabs from the ones above, and CLI sessions made outside Herdr and
+# reopened in a tab: herdr-sessions\list.py finds them and writes derived.json. Sessions started
+# new in Herdr stay in the Herdr sessions panel.
+$derivedFile = Join-Path $env:LOCALAPPDATA 'herdr-sessions\derived.json'
+$derived = @()
+if (Test-Path $derivedFile) { try { $derived = @($ser.DeserializeObject([IO.File]::ReadAllText($derivedFile))['derived']) } catch {} }
+foreach ($r in $derived) {
+  if ($r['kind'] -ne 'claude') { continue }
+  $sid = [string]$r['id']
+  if ($known.ContainsKey($sid) -or -not $r['path'] -or -not (Test-Path -LiteralPath ([string]$r['path']))) { continue }
+  $d = New-Object 'System.Collections.Generic.Dictionary[string,object]'
+  $d['id'] = $null; $d['cli'] = $sid; $d['title'] = [string]$r['title']; $d['cwd'] = [string]$r['cwd']
+  $d['last'] = [double]$r['last']; $d['created'] = $r['first_seen']; $d['archived'] = $false; $d['turns'] = $null
+  $d['model'] = $null; $d['effort'] = $null; $d['perm'] = $r['perm']
+  $d['path'] = [string]$r['path']; $d['resumable'] = $true
+  $d['folder'] = [bool]($d['cwd'] -and (Test-Path -LiteralPath $d['cwd']))
+  $d['desktop'] = $false; $d['origin'] = 'derived'; $d['how'] = [string]$r['how']; $d['parent'] = [string]$r['parent_title']; $d['account'] = [string]$r['account']
+  $d['terminal'] = $r['terminal']; $d['current'] = [bool]$r['current']
+  $list.Add($d)
+  $known[$sid] = $d
+}
 $list.Sort([Comparison[object]] { param($a, $b) ([double]$b['last']).CompareTo([double]$a['last']) })
 
 # Accounts: this one, and each ~/.local/bin/claudeN.cmd that points CLAUDE_CONFIG_DIR elsewhere.

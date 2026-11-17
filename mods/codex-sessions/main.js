@@ -58,10 +58,11 @@ function ago(ms) {
 
 // Another account keeps its own login but reads this account's threads from its databases
 // (sqlite_home), and gets a model its plan offers when the thread's own isn't.
+// A thread forked in a Herdr tab under another account stays in that account's databases (s.home).
 function argvFor(s, account, home, verb = "resume") {
   const argv = [account.cmd, verb, s.id];
-  if (!account.main) {
-    argv.push("-c", `sqlite_home=${home.replace(/\\/g, "/")}`);
+  if (!account.main || s.home) {
+    argv.push("-c", `sqlite_home=${(s.home ?? home).replace(/\\/g, "/")}`);
     if (account.models?.length && !account.models.includes(s.model) && account.best) argv.push("-m", account.best);
   }
   if (s.sandbox === "disabled") argv.push("-s", "danger-full-access");
@@ -77,8 +78,10 @@ const HIDDEN_GROUP = "Hidden";
 const REQUEST = "sessions.request.codex";
 
 // A tab started here runs `& 'codex' 'resume' '<id>' ...` in its shell, so the id finds it.
+// A thread forked in a Herdr tab has a new id; the Herdr sessions panel says which tab runs it.
 const terminalFor = (s, all) =>
-  all.find((k) => k.state === "live" && k.labels?.["herdr.space"] && (k.argv ?? []).some((a) => String(a).includes(s.id)));
+  all.find((k) => k.state === "live" && k.labels?.["herdr.space"] && (k.argv ?? []).some((a) => String(a).includes(s.id))) ??
+  (s.current && s.terminal ? all.find((k) => k.state === "live" && k.address === s.terminal) : undefined);
 
 // Idle: a ring; working: the spinner; blocked and done: a dot in their color; not open: room only.
 function dot(t, status) {
@@ -237,6 +240,8 @@ export default class CodexSessions extends View {
       // A held lock with no tab of ours: the desktop app or another terminal has it.
       const elsewhere = s.open && !k;
       const tip = [s.cwd, `${s.model ?? ""} · ${s.effort ?? ""}`, s.pin != null ? "Pinned" : null,
+        s.origin === "derived" && s.how === "outside" ? `Made outside Herdr, reopened in a Herdr tab${s.account ? ` · ${s.account}` : ""}`
+          : s.origin === "derived" ? `Forked in a Herdr tab${s.parent ? ` from «${s.parent}»` : ""}${s.account ? ` · ${s.account}` : ""}` : null,
         s.link ? `⇄ Paired with Claude session «${s.link.title}»: each handover adds to both` : null, elsewhere ? "Open elsewhere (desktop app or another terminal)" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Claude"]
         .filter(Boolean)
         .join("\n");
