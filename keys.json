@@ -1,4 +1,7 @@
 {
+  "global": {
+    "cmd-w": "mod.open:close-session"
+  },
   "layout:frieren-journey": {
     "ctrl-shift-s": "mod.open:session-search",
     "ctrl-shift-r": "layout.toggle:results"
@@ -8,6 +11,7 @@
     "ctrl-shift-r": "layout.toggle:results"
   },
   "terminal": {
-    "ctrl-v": "smart-paste.paste"
+    "ctrl-v": "smart-paste.paste",
+    "cmd-z": "terminal.clear_selection"
   }
 }

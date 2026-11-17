@@ -257,6 +257,8 @@ Everything works on macOS too. What differs:
 | Paste | Herdr's own `Cmd+V` already pastes text, copied files and screenshots, so you don't need the `ctrl-v` smart paste key |
 | Sprites | macOS draws colour fonts in one colour, so the pixel mods draw each sprite as a stack of one-colour layers (`*.ttf.layers.json` beside the fonts) |
 | Folded sidebar | the brand row is behind the traffic lights, so the unfold button sits at the top of the SPACES list |
+| `Cmd+W` | `close-session` closes the focused session but never its space: a pane if the tab has several, else the tab; the space's last session is replaced by a fresh shell tab in the space's folder (Herdr's own `Cmd+W` closes the last tab's space) |
+| `Cmd+Z` | does nothing in a terminal (`terminal.clear_selection`), so a stray undo can't suspend the agent |
 
 Install by hand:
 
@@ -278,7 +280,7 @@ for m in "$src"/mods/*/; do herdr-app check "$h/mods/$(basename "$m")"; done
 herdr-app do layout.switch --name frieren-pixel
 ```
 
-Then merge the `layout:*` keys below into `keys.json`. **Never replace `keys.json`**: once it's edited,
+Then merge `keys.json` from this repo into yours (leave out `terminal` → `ctrl-v` on macOS). **Never replace `keys.json`**: once it's edited,
 Herdr treats the whole file as yours, so a file with only these keys loses every default shortcut,
 `Cmd+V` and `Cmd+C` included. If that happened, `ctrl-alt-shift-escape` sets `keys.json` aside so the
 defaults come back (it also goes back to the default `main` layout), then merge these keys in again.
@@ -342,10 +344,17 @@ lose every default shortcut), and check that you don't already use these keys. O
     "ctrl-shift-r": "layout.toggle:results"
   },
   "terminal": {
-    "ctrl-v": "smart-paste.paste"
+    "ctrl-v": "smart-paste.paste",
+    "cmd-z": "terminal.clear_selection"
+  },
+  "global": {
+    "cmd-w": "mod.open:close-session"
   }
 }
 ```
+
+`cmd-w` and `cmd-z` are for macOS (see [macOS](#macos)): `Cmd+W` closes a session without closing its
+space, and `Cmd+Z` in a terminal does nothing instead of suspending the agent.
 
 Check the mods and switch to a layout:
 
@@ -354,7 +363,7 @@ foreach ($m in Get-ChildItem "$env:TEMP\frieren\mods" -Directory) { herdr-app ch
 herdr-app do layout.switch --name frieren-pixel     # or frieren-journey
 ```
 
-Install all eighteen mods, even if you want only one layout. Eight tool mods collect usage, session
+Install all nineteen mods, even if you want only one layout. Nine tool mods collect usage, session
 lists and accounts. The four `journey-*` mods draw Frieren Journey, and the six `pixel-*` mods draw
 Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spaces/places.json` and
 `pane-account`.
@@ -469,9 +478,9 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
 ## Uninstall
 
 Delete `layouts/frieren-*`, `themes/frieren-*`, `backgrounds/frieren.jpg`,
-`backgrounds/frieren-pixel-*.png`, the eighteen folders in `mods/` (`usage-gauge`,
+`backgrounds/frieren-pixel-*.png`, the nineteen folders in `mods/` (`usage-gauge`,
 `claude-sessions`, `codex-sessions`, `session-menu`, `session-search`, `pane-account`, `results-panel`,
-`smart-paste`, `journey-chrome`, `journey-spaces`, `journey-party`, `journey-tabs`, `pixel-chrome`,
+`smart-paste`, `close-session`, `journey-chrome`, `journey-spaces`, `journey-party`, `journey-tabs`, `pixel-chrome`,
 `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`) and the keys above. Switch back with
 `Ctrl+Shift+L`.
 
@@ -487,7 +496,7 @@ mods/pixel-*                    the six Frieren Pixel mods: sprite, monster, eff
                                 the stage strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
 mods/pixel-party/build/         scripts and cut sprites that build all of the above
 mods/journey-*                  the four Frieren Journey mods (with their pictures)
-mods/ (the rest)                eight tool mods both layouts use
+mods/ (the rest)                nine tool mods both layouts use
 keys.json                       the key bindings to merge
 RECIPE.md                       the full build brief (exact sizes, colors, behavior)
 preview.png                     the picture the Herdr gallery shows (Frieren Pixel)

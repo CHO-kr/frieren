@@ -296,6 +296,12 @@ at the same paths if you like.
   `<font>.ttf.layers.json`; on macOS pixel-party and pixel-pane draw a sprite as a stack of one-colour
   texts from it (`lib.js` `layered`), and pixel-pane keeps the stage's sprites in a retained child view
   (`StageSprites`) so its other redraws don't rebuild them.
+- **close-session** (macOS `Cmd+W`, `mod.open:close-session`): an invisible 1×1 popup that closes the
+  focused pane (tab with several panes), else the focused tab (space with several tabs), else opens a
+  shell tab in the space's folder and then closes the old tab, so a space never closes; then it closes
+  itself. `Cmd+Z` in a terminal is bound to `terminal.clear_selection` (a no-op that keeps a stray undo
+  from reaching the agent). Never bind a key to an empty action such as `send:`: Herdr then fails every
+  view's render until the mods reload.
 - **Keys**: merge into `keys.json`, never replace it: an edited keys file is the whole binding table, so a
   file with only these keys drops every default shortcut (`Cmd+V`, `Cmd+C`, …).
 - **What it touches**: these mods run programs (`python`, `powershell`, `codex.exe app-server`, `hc`,
@@ -371,8 +377,8 @@ scenes take turns as the background, one per hour, and the whole palette follows
 
 **Files**: `layouts/frieren-pixel.json` (+ `frieren-pixel.png`), `themes/frieren-pixel.json`,
 `backgrounds/frieren-pixel-<scene>.png` (7 scenes, 512×288 art shown ×5 at 2560×1440, 64 colors), and
-six mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`. The eight tool mods
-are the same. The pixel mods also read `mods/journey-party/jobs.json`, `mods/journey-spaces/places.json`
+six mods: `pixel-chrome`, `pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`. The tool mods (eight,
+plus `close-session` for macOS `Cmd+W`) are the same. The pixel mods also read `mods/journey-party/jobs.json`, `mods/journey-spaces/places.json`
 and run `mods/pane-account/who.py`, so the journey mods must be installed too.
 
 **Node tree**: like Journey's, with these changes. `root` row padding 8, gap 8. `sidebar` column 292px
