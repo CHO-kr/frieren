@@ -253,6 +253,9 @@ The terminal is left empty in the animation above so each scene is easy to see.
   Right-click → **Space** puts a session where you want it (`Sort by its words` undoes that). A click
   opens a session in its own space, and makes the space again if you closed it. Without `spaces.json`
   nothing changes: every session is listed and opens in the shown space.
+
+  ![The three session lists while a space named 도구 (Tools) is shown: each header has the space chip, and each list keeps only that space's sessions](docs/spaces.png)
+
 - **Remote Control for the main Claude account**: a session the Herdr sessions panel resumes with the
   plain `claude` account starts with `--remote-control` under its title, and a new `claude` from the
   `+` menu starts with Remote Control too (named `herdr-…` until Claude titles it after your first
@@ -595,7 +598,8 @@ in `LICENSES/`.
   스페이스(업무·프로젝트·도구 등)에 나눠 담아요. 지금 보이는 스페이스의 세션만 목록에 나오고, 어디에도
   안 맞는 세션은 `Not sorted` 아래에 접혀요. 목록 머리의 칩을 누르면 `All spaces`로 전부 보여요.
   우클릭 → Space로 직접 옮길 수 있고, 세션을 누르면 그 세션의 스페이스에서 열려요.
-  `spaces.json`이 없으면 예전처럼 전부 보여요.
+  `spaces.json`이 없으면 예전처럼 전부 보여요. ([그림](docs/spaces.png): 도구 스페이스를 보는 중이라 세 목록 머리에
+  `도구` 칩이 있고, 도구 세션만 나와요.)
 - **데스크톱 앱에서도 이어 하기:** 기본 `claude` 계정으로 Herdr에서 이어 열거나 새로 연 세션은
   Remote Control로 시작해서 Claude 데스크톱 앱 목록에도 떠요.
 - **세션 찾기:** `Ctrl+Shift+S`로 모든 세션을 제목·폴더·스페이스 이름으로 검색해요.
