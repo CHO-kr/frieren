@@ -5,13 +5,17 @@
 // and pane-account/who.py for agents started by hand. Writes only shared("journey.party") (face picks).
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, spaces, terminals, appHome, home, readTextFile, exec, run, setAgentOrder, theme, shared, setShared, layout } from "herdr";
+import { agents, spaces, terminals, appHome, home, readTextFile, exec, run, setAgentOrder, theme, shared, setShared, layout, window } from "herdr";
 import { ROSTER, character, cardPath, facePath, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges } from "./lib.js";
 
 const HOME = appHome();
 const JOBS_FILE = `${HOME}/mods/journey-party/jobs.json`;
 const WHO = `${HOME}/mods/pane-account/who.py`;
-const DATA = () => `${home()}/AppData/Local/herdr-sessions`;
+const PLATFORM = window()?.platform;
+const PY = PLATFORM === "windows" ? "python" : "python3";
+const DATA = () => PLATFORM === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : PLATFORM === "macos" ? `${home()}/Library/Caches/herdr-sessions`
+    : `${home()}/.local/share/herdr-sessions`;
 const STATUS = { working: "Working", blocked: "Needs help", done: "Done", idle: "Resting" };
 const PW = 66;
 const PH = 99;
@@ -76,7 +80,7 @@ export default class JourneyParty extends View {
       cx.spawn(async (cx) => {
         let found = { at: Date.now(), error: "lookup failed" };
         try {
-          const r = await exec("python", ["-X", "utf8", WHO, a.address]);
+          const r = await exec(PY, ["-X", "utf8", WHO, a.address]);
           const out = parse(r.stdout || "{}") ?? {};
           found = out.account ? { at: Date.now(), account: out.account, model: out.model ?? null } : { at: Date.now(), error: out.error || "lookup failed" };
         } catch (e) {

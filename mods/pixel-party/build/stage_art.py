@@ -932,6 +932,7 @@ def main(home, atlas=None):
         # a font Herdr already loaded keeps its name (it keeps the family in memory): rewrite only what changed
         path = f'{party}/fonts/FrierenDot{V}-{key}.ttf'
         build_font(path + '.new', f'FrierenDot{V} {key.capitalize()}', gl)
+        anim.colrfont.mac_layers(path + '.new')  # writes <path>.layers.json too (see colrfont.mac_layers)
         if os.path.exists(path) and open(path, 'rb').read() == open(path + '.new', 'rb').read():
             os.remove(path + '.new')
         else:

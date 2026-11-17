@@ -13,7 +13,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, run, theme, props, openOverlay, closeOverlay, notify, appHome, shared, setShared } from "herdr";
+import { exec, run, theme, props, openOverlay, closeOverlay, notify, appHome, shared, setShared, window } from "herdr";
 
 // Codex under another account reads this account's threads from its databases.
 function codexArgv(account, home, thread, verb = "resume", model = null) {
@@ -23,7 +23,8 @@ function codexArgv(account, home, thread, verb = "resume", model = null) {
   return argv;
 }
 
-const PY = ["-X", "utf8"];
+const PY = window()?.platform === "windows" ? "python" : "python3";
+const PY_ARGS = ["-X", "utf8"];
 
 export default class SessionMenu extends View {
   init() {
@@ -92,7 +93,7 @@ export default class SessionMenu extends View {
   }
 
   async python(script, args) {
-    const r = await exec("python", [...PY, `${appHome()}/mods/${script}`, ...args]);
+    const r = await exec(PY, [...PY_ARGS, `${appHome()}/mods/${script}`, ...args]);
     if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").at(-1) || `${script} exited with ${r.code}`);
     return JSON.parse(r.stdout);
   }

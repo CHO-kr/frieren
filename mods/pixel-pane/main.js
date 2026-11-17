@@ -12,8 +12,8 @@
 //   { "tab": "active", "pane": { "header": { "content": { "mod": "pixel-pane" }, "height": 30 } } }
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { panes, agents, props, run, theme, home, appHome, terminals, shared, exec, checking, focused, spaces, layout } from "herdr";
-import { battleLine, partyFor, isAgentPane, launched, modelName, ART, alpha, mix, ACTING } from "./lib.js";
+import { panes, agents, props, run, theme, home, appHome, terminals, shared, exec, checking, focused, spaces, layout, readTextFile, window as herdrWindow } from "herdr";
+import { battleLine, partyFor, isAgentPane, launched, modelName, ART, alpha, mix, ACTING, ROSTER, familyOf, layered, layerFile } from "./lib.js";
 import { STAGE } from "./stage.js";
 import { plan, glyphs, isNight, hash, MAX_PARTY, STEP, SLOT_MS } from "./plan.js";
 
@@ -38,6 +38,62 @@ function find(node, id) {
   }
   return null;
 }
+// macOS draws colour fonts in one colour, so there a sprite is a stack of one-colour texts (lib.js layered), from the
+// fonts' layer maps: loaded once by loadLayers, keyed by family. Elsewhere (and until they load) the colour glyphs.
+const parse = (text) => { try { return JSON.parse(text); } catch { return null; } };
+const LAYERS = new Map();
+const STACKS = new Map(); // family + frames -> layered(): the same frames come back on every render
+async function loadLayers(families) {
+  if (herdrWindow()?.platform !== "macos") return false;
+  let added = false;
+  for (const family of families) {
+    if (LAYERS.has(family)) continue;
+    const map = parse(await readTextFile(`${appHome()}/mods/pixel-party/fonts/${layerFile(family)}`).catch(() => null));
+    if (map?.g && map.palette) { LAYERS.set(family, map); added = true; }
+  }
+  return added;
+}
+// The layers of one stage item, or null where its font draws in colour (or its map hasn't loaded yet).
+function stackOf(family, list, ms) {
+  const map = LAYERS.get(family);
+  if (!map) return null;
+  const key = `${family}|${ms}|${list.join("\u0001")}`;
+  let stack = STACKS.get(key);
+  if (!stack) {
+    if (STACKS.size > 600) STACKS.clear();
+    STACKS.set(key, (stack = layered(map, list)));
+  }
+  return stack;
+}
+// el: the sprite's box, with its font, size and line height; the frames show in it, switched natively.
+function drawGlyphs(el, list, ms, stack) {
+  if (!stack) return list.length > 1 ? el.frames(list, ms) : el.child(list[0] ?? "");
+  // every view shares one frame clock, so layers with the same frames and ms switch together
+  return el.children(stack.map((l, i) => {
+    const d = div().id(`l${i}`).absolute().left(0).top(0).whitespace_nowrap().text_color(l.color);
+    return l.list.length > 1 ? d.frames(l.list, ms) : d.child(l.list[0] ?? "");
+  }));
+}
+
+// The stage's sprites, as a retained child view: its description is kept until the plan changes (set_props), so the
+// stage's other redraws (the log, focus, agents) don't rebuild hundreds of animated glyphs, or thousands of layers
+// on macOS. props: { items: [{ key, x, y, w, family, frames, ms, stack }] }.
+class StageSprites extends View {
+  init(p) { this.items = p?.items ?? []; }
+  update(p) { this.items = p?.items ?? []; }
+  render() {
+    return div().id("stage-sprites").absolute().left(0).top(0).size_full().children(this.items.map((it) => {
+      const el = div().id(`st-${it.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
+        .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap();
+      return drawGlyphs(el, it.frames, it.ms, it.stack);
+    }));
+  }
+}
+const spriteItems = (sc) => (sc?.items ?? []).map((it) => {
+  const frames = glyphs(it);
+  return { key: it.key, x: it.x, y: it.y, w: it.w, family: it.family, frames, ms: it.ms, stack: stackOf(it.family, frames, it.ms) };
+});
+
 const makePlan = (job) => ({ base: job.base, full: job.full, at: job.at, sc: job.args ? plan(...job.args) : null });
 const sceneNow = () => (STAGE.scenes[shared("pixel.scene")] ? shared("pixel.scene") : "night");
 const tabParty = (tab, ownPane) => partyFor(panes().filter((q) => q.tab === tab), agents(), shared("journey.party") ?? {},
@@ -55,6 +111,9 @@ export default class PixelPane extends View {
     this.timed = false;
     if (checking()) return;
     if (props()?.stage) {
+      const stageFonts = ["Monsters", "Fx", "Props", "Special"].map((k) => `FrierenDot${STAGE.version} ${k}`);
+      this.sprites = cx.new(StageSprites, { items: [] });
+      cx.spawn(async (cx) => { if (await loadLayers([...ROSTER.map(familyOf), ...stageFonts])) this.sprites.set_props({ items: spriteItems(this.cache?.sc) }); });
       // Planning a long battle takes a while in the app's script engine, and a render that runs too long is cut off,
       // so render only asks for a plan (this.want) and keeps drawing the last one; this makes it and redraws.
       this.timed = true;
@@ -63,6 +122,7 @@ export default class PixelPane extends View {
         if (!job) return;
         this.want = null;
         this.cache = makePlan(job);
+        this.sprites.set_props({ items: spriteItems(this.cache.sc) });
         cx.notify();
       });
       // the window's width and the clock's 20-minute slot change without anything else re-rendering us
@@ -99,7 +159,7 @@ export default class PixelPane extends View {
     cx.spawn(async (cx) => {
       let found = { key, at: Date.now(), error: "lookup failed" };
       try {
-        const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
+        const r = await exec(herdrWindow()?.platform === "windows" ? "python" : "python3", ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
         const out = JSON.parse(r.stdout || "{}");
         found = out.account ? { key, at: Date.now(), account: out.account, model: out.model ?? null } : { key, at: Date.now(), error: out.error || "lookup failed" };
       } catch (e) {
@@ -241,12 +301,9 @@ export default class PixelPane extends View {
     const rim = alpha(t.foreground, "60");
     const strip = div().id("stage-strip").relative().flex_none().w(W * Z).h(STAGE_H).overflow_hidden().border_r(2).border_color(rim)
       .child(image(`mods/pixel-party/scenes/${sceneId}.png`).absolute().left(-off * Z).top(0).w(STAGE.stripWidth * Z).h(STAGE_H))
-      .children((sc?.items ?? []).map((it) => {
-        const g = glyphs(it);
-        const el = div().id(`st-${it.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
-          .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap();
-        return g.length > 1 ? el.frames(g, it.ms) : el.child(g[0]);
-      }));
+      .map((el) => (this.sprites ? el.child(this.sprites) : el.children(spriteItems(sc).map((it) =>
+        drawGlyphs(div().id(`st-${it.key}`).absolute().left(it.x * Z).top(it.y * Z).w(it.w * Z).h(GLYPH_H).overflow_hidden()
+          .font_family(it.family).text_size(GLYPH_H).line_height(1).whitespace_nowrap(), it.frames, it.ms, it.stack)))));
     // the log: what's happening, the line before, and who does what
     const title = !sc ? "No party here" : sc.mode === "battle" ? `BATTLE · vs ${sc.foe}` : sc.mode === "victory" ? "VICTORY" : `CAMP · ${night ? "night" : "day"}`;
     const color = !sc ? t.dim : sc.mode === "battle" ? t.working : sc.mode === "victory" ? t.done : t.muted;

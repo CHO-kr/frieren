@@ -8,7 +8,9 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { panes, props, run, theme, home, appHome, terminals, shared, exec } from "herdr";
+import { panes, props, run, theme, home, appHome, terminals, shared, exec, window } from "herdr";
+
+const PY = window()?.platform === "windows" ? "python" : "python3";
 
 const isAgent = (p) => p?.program?.key === "claude" || p?.program?.key === "codex" || /claude|codex/i.test(p?.app ?? "");
 
@@ -28,7 +30,7 @@ function folder(cwd) {
 function launched(terminal) {
   const argv = terminals().find((k) => k.address === terminal)?.argv ?? [];
   const words = argv.flatMap((a) => String(a).match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map((w) => w.replace(/^['"]|['"]$/g, ""));
-  const at = words.findIndex((w) => /^(claude|codex)\d*(\.cmd|\.exe)?$/i.test(w.split(/[\\/]/).pop()));
+  const at = words.findIndex((w) => /^(claude|codex)(?:\d+|-[a-z0-9][a-z0-9_-]*)?(?:\.cmd|\.exe)?$/i.test(w.split(/[\\/]/).pop()));
   if (at < 0) return null;
   const flag = (...names) => {
     const i = words.findIndex((w, n) => n > at && names.includes(w));
@@ -70,7 +72,7 @@ export default class Pane extends View {
     cx.spawn(async (cx) => {
       let found = { key, at: Date.now(), error: "lookup failed" };
       try {
-        const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
+        const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/pane-account/who.py`, p.terminal]);
         const out = JSON.parse(r.stdout || "{}");
         found = out.account ? { key, at: Date.now(), account: out.account, model: out.model ?? null } : { key, at: Date.now(), error: out.error || "lookup failed" };
       } catch (e) {

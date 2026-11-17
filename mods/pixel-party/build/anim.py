@@ -12,7 +12,7 @@ import colrfont
 
 NAMES = ['frieren', 'fern', 'stark', 'himmel', 'heiter', 'eisen', 'sein', 'ubel', 'land', 'denken', 'methode',
          'flamme', 'serie', 'kanne', 'lawine', 'wirbel']
-FONT_VERSION = 5  # bump on every rebuild: Herdr keeps a loaded family in memory, a new name makes it load the new file
+FONT_VERSION = 7  # bump on every rebuild: Herdr keeps a loaded family in memory, a new name makes it load the new file
 FAMILY = {n: f'FrierenDot{FONT_VERSION} ' + n.capitalize() for n in NAMES}
 
 # magic per character: style (bolt | slash | holy) and colors (core, glow, deep)
@@ -667,6 +667,7 @@ def build_one(args):
 
     path = f'{fonts_dir}/FrierenDot{FONT_VERSION}-{name}.ttf'
     build_font(path, FAMILY[name], [(cp, w, cells(f)) for cp, w, f in glyphs], [tuple(int(v) for v in c) for c in pal])
+    colrfont.mac_layers(path)  # 'm' and one code point per colour layer, for macOS (see colrfont.mac_layers)
     face(poses, anchors, f'{faces_dir}/{name}.png')
     if prev_dir:
         # every glyph as it looks, for stage_preview.py

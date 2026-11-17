@@ -6,7 +6,10 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
-import { exec, focused, run, theme, settings, notify, appHome, home, layout, readTextFile, watchFolder, openOverlay, closeOverlay, props } from "herdr";
+import { exec, focused, run, theme, settings, notify, appHome, home, layout, readTextFile, watchFolder, openOverlay, closeOverlay, props, window } from "herdr";
+
+const PLATFORM = window()?.platform;
+const PY = PLATFORM === "windows" ? "python" : "python3";
 
 const KINDS = [
   { id: "all", label: "All" },
@@ -45,15 +48,26 @@ const short = (path) => {
   return path && path.toLowerCase().startsWith(h.toLowerCase()) ? "~" + path.slice(h.length) : path ?? "";
 };
 
-// Windows does these: the default app for a file, and Explorer with the file selected.
-const openFile = (path) => exec("powershell", ["-NoProfile", "-Command", "& { param($p) Invoke-Item -LiteralPath $p }", path]);
-const reveal = (path) => exec("explorer.exe", [`/select,${path}`]);
+// The default app for a file, and the platform's file manager with it selected.
+const openFile = (path) => PLATFORM === "windows"
+  ? exec("powershell", ["-NoProfile", "-Command", "& { param($p) Invoke-Item -LiteralPath $p }", path])
+  : PLATFORM === "macos" ? exec("open", [path]) : exec("xdg-open", [path]);
+const reveal = (path) => PLATFORM === "windows"
+  ? exec("explorer.exe", [`/select,${path}`])
+  : PLATFORM === "macos" ? exec("open", ["-R", path]) : exec("xdg-open", [path.replace(/[\\/][^\\/]+$/, "")]);
 
 // The file goes on the clipboard as a copied file and is pasted into the pane the agent is in,
 // which Herdr does "as if dropped": the path lands in the prompt (Claude Code attaches an image).
 async function attach(path, pane) {
   if (!pane) return notify({ title: "No pane to attach to", body: "Click a pane with an agent, then try again.", level: "info" });
-  await exec("powershell", ["-NoProfile", "-Command", "& { param($p) Set-Clipboard -LiteralPath $p }", path]);
+  if (PLATFORM === "windows") {
+    await exec("powershell", ["-NoProfile", "-Command", "& { param($p) Set-Clipboard -LiteralPath $p }", path]);
+  } else if (PLATFORM === "macos") {
+    const script = "on run argv\nset the clipboard to (POSIX file (item 1 of argv))\nend run";
+    await exec("osascript", ["-e", script, path]);
+  } else {
+    return notify({ title: "Can't attach through the clipboard", body: "File clipboard attachment is not available on this platform.", level: "warning" });
+  }
   run("pane.focus", { pane });
   run("terminal.paste");
 }
@@ -111,7 +125,7 @@ export default class Results extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/results-panel/recent.py`, folder, "80"]);
+        const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/results-panel/recent.py`, folder, "80"]);
         if (folder === this.folder) {
           this.error = r.code === 0 ? null : r.stderr.trim().split("\n").at(-1);
           if (r.code === 0) this.files = JSON.parse(r.stdout).files;
@@ -155,7 +169,7 @@ export default class Results extends View {
     cx.spawn(async (cx) => {
       try {
         if (f.kind === "image") {
-          const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/results-panel/recent.py`, "--preview", f.path]);
+          const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/results-panel/recent.py`, "--preview", f.path]);
           if (r.code === 0) this.picture = JSON.parse(r.stdout).image;
           else this.problem = "Couldn't open the image.";
         } else {
@@ -270,7 +284,7 @@ export default class Results extends View {
         .child(div().truncate().text_size(10.5).text_color(t.dim).child(`${f.dir === "." ? "" : `${f.dir} · `}${ago(f.mtime)} · ${bytes(f.size)}`)))
       .when(this.hovered === f.path, (el) => el
         .child(small(`rs-at-${i}`, "Attach", "Put it in this pane's agent prompt (briefly uses the clipboard)", () => attach(f.path, this.pane)))
-        .child(small(`rs-fd-${i}`, "Folder", "Show in Explorer", () => reveal(f.path))));
+        .child(small(`rs-fd-${i}`, "Folder", PLATFORM === "macos" ? "Show in Finder" : PLATFORM === "windows" ? "Show in Explorer" : "Show in folder", () => reveal(f.path))));
 
     const icon = (id, path, tip, on, act) => div()
       .id(id)
@@ -289,7 +303,7 @@ export default class Results extends View {
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(short(this.folder)))
         .child(icon("rs-pin", this.locked ? "mods/workspace-chrome/pin-off.svg" : "mods/workspace-chrome/pin.svg",
           this.locked ? "Unpin the folder (follow the focused pane)" : "Pin this folder", this.locked, (cx) => { this.locked = !this.locked; cx.notify(); }))
-        .child(icon("rs-folder", "mods/workspace-chrome/folder.svg", "Open the folder in Explorer", false, () => this.folder && openFile(this.folder)))
+        .child(icon("rs-folder", "mods/workspace-chrome/folder.svg", PLATFORM === "macos" ? "Open the folder in Finder" : PLATFORM === "windows" ? "Open the folder in Explorer" : "Open the folder", false, () => this.folder && openFile(this.folder)))
         .child(this.busy
           ? svg("mods/workspace-chrome/spinner.svg").size(13).flex_none().text_color(t.dim).spin(900)
           : icon("rs-refresh", "mods/claude-sessions/refresh.svg", "Refresh", false, (cx) => this.refresh(cx, true)))

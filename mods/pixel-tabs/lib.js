@@ -25,7 +25,7 @@ export const character = (id) => BY_ID.get(id) ?? null;
 export const facePath = (c) => (c ? `mods/pixel-party/faces/${c.id}.png` : null);
 // Each character's animations live in its own color pixel font (mods/pixel-party/fonts/FrierenDot<v>-<id>.ttf).
 // The version is in the family name: Herdr keeps a loaded family in memory, so a rebuilt font needs a new name.
-export const FONT_VERSION = 5;
+export const FONT_VERSION = 7;
 export const familyOf = (c) => `FrierenDot${FONT_VERSION} ${c.name}`;
 
 // Sprite animations: one glyph per frame. Stage glyphs are 80x32 art pixels (the session header), solo glyphs 36x32
@@ -55,6 +55,26 @@ export function frames(anim, solo) {
   const [base, n, ms] = ANIMS[anim] ?? ANIMS[LOOKS[anim]] ?? ANIMS.stand;
   const first = base + (solo ? 0x400 : 0);
   return { list: Array.from({ length: n }, (_, i) => String.fromCodePoint(first + i)), ms };
+}
+
+// macOS draws colour fonts in one colour (only Apple's emoji get colour), so there a sprite is a stack of one-colour
+// texts: each palette colour's layer glyphs, from the font's layer map (fonts/FrierenDot<v>-<name>.ttf.layers.json,
+// made by build/colrfont.py mac_layers). map: { palette: ["#rrggbbaa"], g: { "<code point>": [first, c0, c1, ...] } }:
+// a base glyph's layer k (palette index ck) is at first + k, and an empty glyph of its width at first + length - 1.
+export const layerFile = (family) => `FrierenDot${FONT_VERSION}-${family.split(" ").pop().toLowerCase()}.ttf.layers.json`;
+export function layered(map, list) {
+  // list: frames, each a string of base glyphs. Returns [{ color, list }] in the font's paint order (palette index).
+  const parsed = list.map((s) => [...s].map((ch) => map.g[ch.codePointAt(0)] ?? ch));
+  const used = new Set();
+  for (const fr of parsed) for (const e of fr) if (typeof e !== "string") for (let i = 1; i < e.length; i++) used.add(e[i]);
+  return [...used].sort((a, b) => a - b).map((c) => ({
+    color: map.palette[c],
+    list: parsed.map((fr) => fr.map((e) => {
+      if (typeof e === "string") return e;
+      const i = e.indexOf(c, 1);
+      return String.fromCodePoint(e[0] + (i > 0 ? i - 1 : e.length - 1));
+    }).join("")),
+  }));
 }
 
 // Colors follow the background scene: pixel-chrome writes the scene's theme overrides into the layout ("colors"), so
@@ -297,7 +317,7 @@ function words(argv) {
 // The account, model and resumed session an agent tab started with. null for an agent typed by hand.
 export function launched(argv) {
   const w = words(argv);
-  const at = w.findIndex((x) => /^(claude|codex)\d*(\.cmd|\.exe)?$/i.test(x.split(/[\\/]/).pop()));
+  const at = w.findIndex((x) => /^(claude|codex)(?:\d+|-[a-z0-9][a-z0-9_-]*)?(?:\.cmd|\.exe)?$/i.test(x.split(/[\\/]/).pop()));
   if (at < 0) return null;
   const after = (...names) => {
     const i = w.findIndex((x, n) => n > at && names.includes(x));

@@ -10,13 +10,17 @@
 // Members who need you, work or are done get a full card, on top; the others a one-line row.
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, panes, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking } from "herdr";
-import { ROSTER, character, facePath, familyOf, frames, battleLine, classify, screenStatus, isAgentPane, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART, alpha, backdrop, ACTING } from "./lib.js";
+import { agents, panes, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking, window } from "herdr";
+import { ROSTER, character, facePath, familyOf, frames, layered, layerFile, battleLine, classify, screenStatus, isAgentPane, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART, alpha, backdrop, ACTING } from "./lib.js";
 
 const HOME = appHome();
 const JOBS_FILE = `${HOME}/mods/journey-party/jobs.json`;
 const WHO = `${HOME}/mods/pane-account/who.py`;
-const DATA = () => `${home()}/AppData/Local/herdr-sessions`;
+const PLATFORM = window()?.platform;
+const PY = PLATFORM === "windows" ? "python" : "python3";
+const DATA = () => PLATFORM === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : PLATFORM === "macos" ? `${home()}/Library/Caches/herdr-sessions`
+    : `${home()}/.local/share/herdr-sessions`;
 const STATUS = { working: "Acting", blocked: "Needs help", done: "Done", idle: "Resting" };
 const ORDER = { blocked: 0, working: 1, done: 2 };
 
@@ -45,12 +49,43 @@ const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 const isAgent = (a) => /claude|codex/i.test(`${a.app ?? ""} ${a.program?.key ?? ""}`);
 const parse = (text) => { try { return JSON.parse(text); } catch { return null; } };
 
+// macOS draws colour fonts in one colour, so there a sprite is a stack of one-colour texts (lib.js layered), from the
+// fonts' layer maps: loaded once by loadLayers, keyed by family. Elsewhere (and until they load) the colour glyphs.
+const LAYERS = new Map();
+const STACKS = new Map(); // family + frames -> layered(): the same frames come back on every render
+async function loadLayers(families) {
+  if (PLATFORM !== "macos") return false;
+  let added = false;
+  for (const family of families) {
+    if (LAYERS.has(family)) continue;
+    const map = parse(await readTextFile(`${appHome()}/mods/pixel-party/fonts/${layerFile(family)}`).catch(() => null));
+    if (map?.g && map.palette) { LAYERS.set(family, map); added = true; }
+  }
+  return added;
+}
+// el: the sprite's box, with its font, size and line height; the frames show in it, switched natively.
+function glyphs(el, family, list, ms) {
+  const map = LAYERS.get(family);
+  if (!map) return list.length > 1 ? el.frames(list, ms) : el.child(list[0] ?? "");
+  const key = `${family}|${ms}|${list.join("\u0001")}`;
+  let stack = STACKS.get(key);
+  if (!stack) {
+    if (STACKS.size > 400) STACKS.clear();
+    STACKS.set(key, (stack = layered(map, list)));
+  }
+  // every view shares one frame clock, so layers with the same frames and ms switch together
+  return el.relative().children(stack.map((l, i) => {
+    const d = div().id(`l${i}`).absolute().left(0).top(0).whitespace_nowrap().text_color(l.color);
+    return l.list.length > 1 ? d.frames(l.list, ms) : d.child(l.list[0] ?? "");
+  }));
+}
+
 // One animated sprite: a glyph of the character's color pixel font, switched natively by .frames().
 export function sprite(ch, anim, solo, key) {
   const f = frames(anim, solo);
-  return div().id(key).flex_none().h(SPR_H).w((solo ? ART.solo : ART.stage) * ART.scale).overflow_hidden()
-    .font_family(familyOf(ch)).text_size(SPR_H).line_height(1).whitespace_nowrap()
-    .frames(f.list, f.ms);
+  const el = div().id(key).flex_none().h(SPR_H).w((solo ? ART.solo : ART.stage) * ART.scale).overflow_hidden()
+    .font_family(familyOf(ch)).text_size(SPR_H).line_height(1).whitespace_nowrap();
+  return glyphs(el, familyOf(ch), f.list, f.ms);
 }
 
 export default class PixelParty extends View {
@@ -65,6 +100,7 @@ export default class PixelParty extends View {
     this.lastShared = null;
     this.activity = {}; // address -> { kind, detail }
     this.reading = false;
+    cx.spawn(async (cx) => { if (await loadLayers(ROSTER.map(familyOf))) cx.notify(); });
     cx.spawn(async (cx) => {
       this.jobs = parse(await readTextFile(JOBS_FILE).catch(() => null)) ?? {};
       this.jobsLoaded = true;
@@ -137,7 +173,7 @@ export default class PixelParty extends View {
       cx.spawn(async (cx) => {
         let found = { at: Date.now(), error: "lookup failed" };
         try {
-          const r = await exec("python", ["-X", "utf8", WHO, a.address]);
+          const r = await exec(PY, ["-X", "utf8", WHO, a.address]);
           const out = parse(r.stdout || "{}") ?? {};
           found = out.account ? { at: Date.now(), account: out.account, model: out.model ?? null } : { at: Date.now(), error: out.error || "lookup failed" };
         } catch (e) {

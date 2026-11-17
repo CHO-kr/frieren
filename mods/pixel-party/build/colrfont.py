@@ -95,6 +95,71 @@ def build(path, family, frames, palette, W, H, first=0xE000):
     fb.save(path)
 
 
+LAYER_FIRST = 0xF0000  # Supplementary Private Use Area-A: where mac_layers maps each colour layer
+
+
+def mac_layers(path, json_path=None):
+    """Make a finished COLRv0 font usable where colour fonts draw in one colour (Herdr on macOS).
+
+    - maps 'm' (to the empty space glyph): GPUI on macOS skips a font family that has no 'm', so without it the
+      family is never used and every sprite shows as a missing-glyph box;
+    - gives every colour layer a code point of its own (from LAYER_FIRST), and after each base glyph's layers an
+      empty glyph with the base's advance, so a mod can draw a sprite as a stack of one-colour texts;
+    - writes <font>.layers.json: {"palette": ["#rrggbbaa", ...], "g": {"<base code point>": [first, c0, c1, ...]}}:
+      layer k of that base (palette index ck) is at first + k, and its empty glyph at first + len(cs).
+    Windows keeps drawing the base glyphs in colour; nothing it uses changes."""
+    import json
+    from fontTools.ttLib import TTFont
+    from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
+    font = TTFont(path)
+    glyf, hmtx = font['glyf'], font['hmtx']
+    best = font.getBestCmap()
+    cmap = {cp: g for cp, g in best.items() if cp < LAYER_FIRST}
+    cmap[ord('m')] = 'space'
+    layers = font['COLR'].ColorLayers
+    entries, cp = {}, LAYER_FIRST
+    for base_cp, base in sorted(cmap.items()):
+        lay = layers.get(base)
+        if not lay or base_cp == ord('m'):
+            continue
+        entries[str(base_cp)] = [cp] + [l.colorID for l in lay]
+        for l in lay:
+            cmap[cp] = l.name
+            cp += 1
+        empty = f'{base}.empty'
+        if empty not in glyf:
+            glyf[empty] = TTGlyphPen(None).glyph()  # also appends it to the glyph order
+        hmtx[empty] = (hmtx[base][0], 0)
+        cmap[cp] = empty
+        cp += 1
+    order = list(glyf.glyphOrder)
+    font.setGlyphOrder(order)
+    font['maxp'].numGlyphs = len(order)
+    if 'post' in font and font['post'].formatType == 2.0:
+        font['post'].extraNames = []
+        font['post'].mapping = {}
+    bmp = {c: g for c, g in cmap.items() if c <= 0xFFFF}
+    tables = []
+    for pid, eid, fmt, m in ((0, 3, 4, bmp), (3, 1, 4, bmp), (0, 4, 12, cmap), (3, 10, 12, cmap)):
+        t = CmapSubtable.newSubtable(fmt)
+        t.platformID, t.platEncID, t.language, t.cmap = pid, eid, 0, dict(m)
+        tables.append(t)
+    font['cmap'].tables = tables
+    font.save(path)
+    pal = font['CPAL'].palettes[0]
+    data = {'palette': ['#%02x%02x%02x%02x' % (c.red, c.green, c.blue, c.alpha) for c in pal], 'g': entries}
+    jp = json_path or (path[:-4] if path.endswith('.new') else path) + '.layers.json'
+    with open(jp, 'w', encoding='utf-8', newline='\n') as f:
+        json.dump(data, f, separators=(',', ':'))
+    return jp
+
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[1] == '--mac-layers':
+    # python colrfont.py --mac-layers <font.ttf> ...: add the layer code points to fonts already built
+    for p in sys.argv[2:]:
+        print(mac_layers(p))
+    sys.exit(0)
+
 if __name__ == '__main__':
     pal = [(255, 0, 0), (0, 200, 0), (40, 80, 255), (255, 220, 0), (20, 20, 20)]
     frames = []

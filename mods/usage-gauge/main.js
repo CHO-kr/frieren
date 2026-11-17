@@ -8,7 +8,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout, props } from "herdr";
+import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout, props, window } from "herdr";
 import { roomiest, isRoomiest, MOST_LEFT_TIP } from "./roomiest.js";
 
 const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
@@ -32,7 +32,12 @@ function share(data) {
   if (JSON.stringify(shared("usage.accounts")) !== JSON.stringify(brief)) setShared("usage.accounts", brief);
 }
 
-const CACHE = () => `${home()}/AppData/Local/herdr-sessions/usage.json`;
+const PLATFORM = window()?.platform;
+const PY = PLATFORM === "windows" ? "python" : "python3";
+const STORE = () => PLATFORM === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : PLATFORM === "macos" ? `${home()}/Library/Caches/herdr-sessions`
+    : `${home()}/.local/share/herdr-sessions`;
+const CACHE = () => `${STORE()}/usage.json`;
 
 function until(ms, now) {
   const m = Math.max(0, Math.round((ms - now) / 60000));
@@ -106,7 +111,7 @@ export default class UsageGauge extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/usage-gauge/usage.py`]);
+        const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/usage-gauge/usage.py`]);
         if (r.code === 0) {
           this.data = JSON.parse(r.stdout);
           share(this.data);

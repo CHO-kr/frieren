@@ -97,7 +97,7 @@ function words(argv) {
 // The account, model and resumed session it started with. null for an agent typed by hand (who.py reads those).
 export function launched(argv) {
   const w = words(argv);
-  const at = w.findIndex((x) => /^(claude|codex)\d*(\.cmd|\.exe)?$/i.test(x.split(/[\\/]/).pop()));
+  const at = w.findIndex((x) => /^(claude|codex)(?:\d+|-[a-z0-9][a-z0-9_-]*)?(?:\.cmd|\.exe)?$/i.test(x.split(/[\\/]/).pop()));
   if (at < 0) return null;
   const after = (...names) => {
     const i = w.findIndex((x, n) => n > at && names.includes(x));

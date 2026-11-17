@@ -12,14 +12,28 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
 
 HOME = os.path.expanduser("~")
-CACHE = os.path.join(os.environ.get("LOCALAPPDATA", HOME), "herdr-sessions", "usage.json")
+
+
+def data_store():
+    if os.environ.get("HERDR_SESSIONS_DIR"):
+        return os.environ["HERDR_SESSIONS_DIR"]
+    if os.name == "nt":
+        return os.path.join(os.environ.get("LOCALAPPDATA", HOME), "herdr-sessions")
+    if sys.platform == "darwin":
+        return os.path.join(HOME, "Library", "Caches", "herdr-sessions")
+    return os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "herdr-sessions")
+
+
+CACHE = os.path.join(data_store(), "usage.json")
 
 
 def ms(value):
@@ -36,14 +50,66 @@ def read_json(path):
         return json.load(f)
 
 
-def claude_accounts():
-    found = [("claude", os.path.join(HOME, ".claude"), os.path.join(HOME, ".claude.json"))]
-    for wrapper in sorted(glob.glob(os.path.join(HOME, r".local\bin\claude*.cmd"))):
-        m = re.search(r'CLAUDE_CONFIG_DIR=([^"\r\n]+)', open(wrapper, encoding="utf-8", errors="replace").read())
-        if m:
-            folder = os.path.expandvars(m.group(1))
-            found.append((os.path.splitext(os.path.basename(wrapper))[0], folder, os.path.join(folder, ".claude.json")))
+def wrapper_accounts(prefix, variable):
+    pattern = os.path.join(HOME, ".local", "bin", prefix + ("*.cmd" if os.name == "nt" else "*"))
+    found = []
+    for wrapper in sorted(glob.glob(pattern)):
+        if os.name != "nt" and not os.access(wrapper, os.X_OK):
+            continue
+        try:
+            if os.path.getsize(wrapper) > 256_000:
+                continue
+            with open(wrapper, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        match = re.search(r'^\s*(?:export\s+)?' + re.escape(variable) + r'\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s#;&]+))', text, re.M | re.I)
+        if not match:
+            match = re.search(r'^\s*@?(?:set\s+)?"?' + re.escape(variable) + r'=([^"\r\n]+)', text, re.M | re.I)
+        if not match:
+            continue
+        raw = next((value for value in match.groups() if value is not None), "").strip()
+        raw = raw.replace("%USERPROFILE%", HOME).replace("%HOME%", HOME)
+        folder = os.path.normpath(os.path.expanduser(os.path.expandvars(raw)))
+        if not os.path.isdir(folder):
+            continue
+        name = re.sub(r"\.cmd$", "", os.path.basename(wrapper), flags=re.I)
+        found.append((name, folder))
     return found
+
+
+def claude_accounts():
+    folder = os.path.join(HOME, ".claude")
+    found = [("claude", folder, os.path.join(HOME, ".claude.json"))]
+    seen = {os.path.normcase(os.path.realpath(folder))}
+    for name, folder in wrapper_accounts("claude", "CLAUDE_CONFIG_DIR"):
+        key = os.path.normcase(os.path.realpath(folder))
+        if key not in seen:
+            found.append((name, folder, os.path.join(folder, ".claude.json")))
+            seen.add(key)
+    return found
+
+
+def claude_oauth(name, folder):
+    """OAuth record from the portable file or the account's macOS Keychain item."""
+    try:
+        return read_json(os.path.join(folder, ".credentials.json"))["claudeAiOauth"]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if sys.platform != "darwin":
+        raise RuntimeError("Claude credentials were not found.")
+    plain = "Claude Code-credentials"
+    services = [plain] if name == "claude" else [plain + "-" + hashlib.sha256(folder.encode()).hexdigest()[:8], plain]
+    for service in services:
+        try:
+            result = subprocess.run(["security", "find-generic-password", "-s", service, "-w"], stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True, encoding="utf-8", timeout=10)
+            if result.returncode == 0:
+                return json.loads(result.stdout)["claudeAiOauth"]
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+            pass
+    # Never include keychain output or credential content in this error.
+    raise RuntimeError("Claude credentials were not found in the config directory or macOS Keychain.")
 
 
 class Wait(RuntimeError):
@@ -78,7 +144,7 @@ def claude_usage(name, folder, profile):
         out["email"] = read_json(profile).get("oauthAccount", {}).get("emailAddress")
     except (OSError, ValueError):
         pass
-    oauth = read_json(os.path.join(folder, ".credentials.json"))["claudeAiOauth"]
+    oauth = claude_oauth(name, folder)
     out.update(claude_login(name, oauth["accessToken"], out["email"]))
     req = urllib.request.Request("https://api.anthropic.com/api/oauth/usage",
                                  headers={"Authorization": "Bearer " + oauth["accessToken"], "anthropic-beta": "oauth-2025-04-20"})
@@ -110,18 +176,34 @@ def span(minutes):
 
 
 def codex_exe():
-    exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
-    if not exes:
-        raise RuntimeError("codex.exe not found.")
-    return exes[0]
+    if os.name == "nt":
+        exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
+        executable = exes[0] if exes else None
+    else:
+        executable = shutil.which("codex")
+    if not executable:
+        raise RuntimeError("Codex executable not found.")
+    return executable
 
 
 def codex_accounts():
-    found = [("codex", os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex"))]
-    others = os.path.join(HOME, r".local\share\codex-accounts")
-    for name in sorted(os.listdir(others)) if os.path.isdir(others) else []:
-        if os.path.isfile(os.path.join(HOME, rf".local\bin\{name}.cmd")):
-            found.append((name, os.path.join(others, name)))
+    main = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
+    found = [("codex", main)]
+    seen = {os.path.normcase(os.path.realpath(main))}
+    for name, folder in wrapper_accounts("codex", "CODEX_HOME"):
+        key = os.path.normcase(os.path.realpath(folder))
+        if key not in seen:
+            found.append((name, folder))
+            seen.add(key)
+    if os.name == "nt":
+        others = os.path.join(HOME, ".local", "share", "codex-accounts")
+        for name in sorted(os.listdir(others)) if os.path.isdir(others) else []:
+            folder = os.path.join(others, name)
+            wrapper = os.path.join(HOME, ".local", "bin", name + ".cmd")
+            key = os.path.normcase(os.path.realpath(folder))
+            if os.path.isfile(wrapper) and key not in seen:
+                found.append((name, folder))
+                seen.add(key)
     return found
 
 
@@ -197,10 +279,10 @@ def waiting(agent, args):
         return None
     if agent == "claude":
         try:
-            token = read_json(os.path.join(args[1], ".credentials.json"))["claudeAiOauth"]["accessToken"]
+            token = claude_oauth(args[0], args[1])["accessToken"]
             if hashlib.sha256(token.encode()).hexdigest()[:16] != row.get("token_fp"):
                 return None
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, RuntimeError):
             pass
     return row
 
@@ -218,9 +300,9 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             if agent == "claude":
                 # The login check is another endpoint, so it still runs while usage waits.
                 try:
-                    token = read_json(os.path.join(args[1], ".credentials.json"))["claudeAiOauth"]["accessToken"]
+                    token = claude_oauth(args[0], args[1])["accessToken"]
                     row.update(claude_login(args[0], token, row.get("email")))
-                except (OSError, ValueError, KeyError):
+                except (OSError, ValueError, KeyError, RuntimeError):
                     pass
             accounts.append(row)
             continue

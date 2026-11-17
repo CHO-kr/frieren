@@ -265,8 +265,9 @@ each comes from.
 `layout.toggle`, `layout.show`, `layout.hide`, `layout.select`, `layout.resize`, `mod.open`,
 `app.settings`, `window.minimize`, `window.maximize`, `window.close`, `terminal.paste`.
 
-**Keys** (`keys.json`): `layout:frieren-journey` → `ctrl-shift-s: mod.open:session-search`,
-`ctrl-shift-r: layout.toggle:results`. `terminal` → `ctrl-v: smart-paste.paste`.
+**Keys** (`keys.json`, merged into the person's file, never replacing it): `layout:frieren-journey` →
+`ctrl-shift-s: mod.open:session-search`, `ctrl-shift-r: layout.toggle:results`. `terminal` →
+`ctrl-v: smart-paste.paste` (Windows; on macOS Herdr's `Cmd+V` already pastes files and screenshots).
 
 **Programs it expects**: Windows 10/11, Windows PowerShell 5.1, `python` (3.10+) on PATH with Pillow
 (thumbnails, clipboard images), `ffmpeg` (optional, video posters), `hc` and `git` on PATH, Claude Code at
@@ -284,7 +285,19 @@ at the same paths if you like.
 
 ## Watch out
 
-- **Windows only**: `msvcrt`, `ctypes.windll`, PowerShell, `.cmd` wrappers, `%LOCALAPPDATA%` paths.
+- **Windows and macOS**: every Windows path (`msvcrt`, `ctypes.windll`, PowerShell, `.cmd` wrappers,
+  `%LOCALAPPDATA%`) has a POSIX branch: `fcntl`, `ps` (process tree and `ps eww` for an agent's
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME`), `claude-sessions/list.py` instead of `list.ps1`, shell wrappers
+  in `~/.local/bin` (`claude-<name>`, `codex<N>`, …), `~/Library/Caches/herdr-sessions`, `codex` on PATH,
+  the login Keychain for Claude credentials, `pbpaste` / `osascript` for the clipboard, `open` / `sips`.
+  The JS mods pick `python` on Windows and `python3` elsewhere (`window().platform`).
+- **Sprites on macOS**: Herdr there draws colour (COLR) fonts in one colour and skips a family with no
+  `m`. `colrfont.mac_layers` gives each font an `m`, a code point per colour layer (from U+F0000) and a
+  `<font>.ttf.layers.json`; on macOS pixel-party and pixel-pane draw a sprite as a stack of one-colour
+  texts from it (`lib.js` `layered`), and pixel-pane keeps the stage's sprites in a retained child view
+  (`StageSprites`) so its other redraws don't rebuild them.
+- **Keys**: merge into `keys.json`, never replace it: an edited keys file is the whole binding table, so a
+  file with only these keys drops every default shortcut (`Cmd+V`, `Cmd+C`, …).
 - **What it touches**: these mods run programs (`python`, `powershell`, `codex.exe app-server`, `hc`,
   `explorer`, `git`) and read files outside their folder (Claude and Codex homes, the desktop apps' data,
   credentials). They reach the network: `usage.py` sends each Claude account's OAuth access token to

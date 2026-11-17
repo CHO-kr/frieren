@@ -4,7 +4,7 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, terminals, agents, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand } from "herdr";
+import { exec, terminals, agents, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand, window } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -116,8 +116,12 @@ export default class ClaudeSessions extends View {
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", `${appHome()}/mods/claude-sessions/list.ps1`]);
-        if (r.code !== 0) throw new Error(r.stderr.trim() || `list.ps1 exited with ${r.code}`);
+        const windows = window()?.platform === "windows";
+        const script = `${appHome()}/mods/claude-sessions/${windows ? "list.ps1" : "list.py"}`;
+        const r = windows
+          ? await exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script])
+          : await exec("python3", ["-X", "utf8", script]);
+        if (r.code !== 0) throw new Error(r.stderr.trim() || `${windows ? "list.ps1" : "list.py"} exited with ${r.code}`);
         const data = JSON.parse(r.stdout);
         this.sessions = data.sessions.filter((s) => !s.archived);
         this.accounts = data.accounts?.length ? data.accounts : [MAIN];

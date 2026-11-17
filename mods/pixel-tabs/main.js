@@ -13,7 +13,8 @@ import { character, facePath, entriesFor, settle, alpha, mix } from "./lib.js";
 import { isUnnamed, tabFacts, projectColor, unnamedTip } from "./names.js";
 
 const JOBS_FILE = `${appHome()}/mods/journey-party/jobs.json`;
-const DATA = () => `${home()}/AppData/Local/herdr-sessions`;
+const DATA = () => { const p = window()?.platform; return p === "windows" ? `${home()}/AppData/Local/herdr-sessions`
+  : p === "macos" ? `${home()}/Library/Caches/herdr-sessions` : `${home()}/.local/share/herdr-sessions`; };
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
 const ROOT_AGAIN = 10 * 60000;
 const parse = (text) => { try { return JSON.parse(text); } catch { return null; } };

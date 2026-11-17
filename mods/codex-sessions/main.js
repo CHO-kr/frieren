@@ -5,7 +5,9 @@
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, terminals, agents, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand } from "herdr";
+import { exec, terminals, agents, run, theme, notify, appHome, layout, openOverlay, shared, setShared, nextCommand, window } from "herdr";
+
+const PY = window()?.platform === "windows" ? "python" : "python3";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -119,7 +121,7 @@ export default class CodexSessions extends View {
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/codex-sessions/list.py`]);
+        const r = await exec(PY, ["-X", "utf8", `${appHome()}/mods/codex-sessions/list.py`]);
         if (r.code !== 0) throw new Error(r.stderr.trim() || `list.py exited with ${r.code}`);
         const data = JSON.parse(r.stdout);
         this.threads = data.threads;

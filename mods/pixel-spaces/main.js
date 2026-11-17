@@ -41,6 +41,12 @@ function findWhere(node, test) {
 
 // The sidebar's rail goes by its width, not a flag: dragging its edge narrows it too.
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
+// Same as pixel-chrome's toggleSidebar, unfolding only: brings the session lists back and the width it had.
+function unfoldSidebar() {
+  setShared("sidebar.collapsed", false);
+  for (const id of ["claude-sessions", "codex-sessions"]) if (find(layout(), id)) run("layout.show", { id });
+  run("layout.resize", { id: "sidebar", px: shared("pixel.sidebar.width") ?? 292 });
+}
 
 // Where a space is now: its first terminal's live folder, else where it was made.
 // `ps`: panes(), read once by the caller (each read copies every pane).
@@ -480,6 +486,7 @@ export default class Spaces extends View {
   render() {
     const t = theme();
     const collapsed = narrow();
+    const railUnfold = collapsed && window()?.platform === "macos";
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
     const sp = spaces();
     const ids = new Set(sp.map(p => p.id));
@@ -496,7 +503,10 @@ export default class Spaces extends View {
     const items = this.grouped(t, collapsed, single);
     this.fit(items, sp.length);
     return v_flex().size_full().min_h(0).text_size(12)
-      .child(h_flex().h(28).flex_none().pl(10).pr(6).gap(6).items_center().border_b(2).border_color(alpha(t.border, "60"))
+      .child(h_flex().h(28).flex_none().pl(railUnfold ? 2 : 10).pr(railUnfold ? 2 : 6).gap(railUnfold ? 2 : 6).items_center().border_b(2).border_color(alpha(t.border, "60"))
+        // Folded on macOS, the brand row is all traffic lights (pixel-chrome hides its button), so unfold from here.
+        .when(railUnfold, el => el.child(div().id("sidebar-unfold").size(24).flex_none().flex().items_center().justify_center().text_color(t.dim)
+          .hover(s => s.bg(t.hover).text_color(t.accent)).tooltip("Unfold sidebar").on_click(() => unfoldSidebar()).child(svg(ICON("sidebar")).size(14))))
         .when(!collapsed, el => el.child(svg(ICON("chevron-right")).size(12).text_color(t.accent)).child(div().text_color(t.accent).child("SPACES"))
           .child(div().font_family("Galmuri9").text_size(10).text_color(t.muted).child("DESTINATIONS")))
         .child(div().flex_1())

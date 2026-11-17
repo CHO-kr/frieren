@@ -6,21 +6,58 @@
 import glob
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import threading
 import uuid
 
+if len(sys.argv) < 2:
+    sys.exit("usage: reset.py <account> [--dry-run]")
 name = sys.argv[1]
 dry = "--dry-run" in sys.argv[2:]
-home = os.path.expanduser(r"~\.codex") if name == "codex" else os.path.join(os.path.expanduser(r"~\.local\share\codex-accounts"), name)
+base = os.path.expanduser("~")
+
+
+def account_home(account):
+    if account == "codex":
+        return os.environ.get("CODEX_HOME") or os.path.join(base, ".codex")
+    pattern = os.path.join(base, ".local", "bin", "codex*.cmd" if os.name == "nt" else "codex*")
+    for wrapper in sorted(glob.glob(pattern)):
+        wrapper_name = re.sub(r"\.cmd$", "", os.path.basename(wrapper), flags=re.I)
+        if wrapper_name != account or (os.name != "nt" and not os.access(wrapper, os.X_OK)):
+            continue
+        try:
+            if os.path.getsize(wrapper) > 256_000:
+                continue
+            with open(wrapper, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        match = re.search(r'^\s*(?:export\s+)?CODEX_HOME\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s#;&]+))', text, re.M | re.I)
+        if not match:
+            match = re.search(r'^\s*@?(?:set\s+)?"?CODEX_HOME=([^"\r\n]+)', text, re.M | re.I)
+        if match:
+            raw = next((value for value in match.groups() if value is not None), "").strip()
+            raw = raw.replace("%USERPROFILE%", base).replace("%HOME%", base)
+            return os.path.normpath(os.path.expanduser(os.path.expandvars(raw)))
+    # Compatibility with the original Windows account layout.
+    return os.path.join(base, ".local", "share", "codex-accounts", account)
+
+
+home = account_home(name)
 if not os.path.isdir(home):
     sys.exit(f"no Codex account folder for {name}")
 
-exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
-if not exes:
-    sys.exit("codex.exe not found under %LOCALAPPDATA%\\OpenAI\\Codex\\bin")
-proc = subprocess.Popen([exes[0], "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+if os.name == "nt":
+    exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
+    executable = exes[0] if exes else None
+else:
+    executable = shutil.which("codex")
+if not executable:
+    sys.exit("Codex executable not found.")
+proc = subprocess.Popen([executable, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.DEVNULL, encoding="utf-8", env={**os.environ, "CODEX_HOME": home},
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 watchdog = threading.Timer(60, proc.kill)

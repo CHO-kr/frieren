@@ -1,6 +1,6 @@
 # Frieren: Herdr layouts
 
-Two Windows layouts for the [Herdr](https://herdr.dev) desktop app, made for running several
+Two layouts for the [Herdr](https://herdr.dev) desktop app on Windows and macOS, made for running several
 **Claude Code** and **Codex** accounts side by side, dressed as a fantasy party from *Frieren*:
 
 - **Frieren Pixel** (`frieren-pixel`, new): 16-bit pixel art. Every agent is a little pixel party
@@ -16,7 +16,7 @@ account's plan usage in the top bar, and the account and model on every pane. Pi
 
 ![Frieren Pixel layout in Herdr](docs/frieren-pixel.png)
 
-> Windows 10/11 only. The UI text is English.
+> Windows 10/11 and macOS (see [macOS](#macos)). The UI text is English.
 
 ## Frieren Pixel
 
@@ -230,7 +230,7 @@ The terminal is left empty in the animation above so each scene is easy to see.
 
 | What | Why |
 |---|---|
-| Windows 10/11, Windows PowerShell 5.1 | the mods use PowerShell, `.cmd` wrappers and Windows APIs |
+| Windows 10/11, Windows PowerShell 5.1 (or macOS: see [macOS](#macos)) | on Windows the mods use PowerShell, `.cmd` wrappers and Windows APIs |
 | [Herdr](https://herdr.dev) desktop app with `hc` on PATH | the app itself; Frieren Pixel reads agent screens with `hc read` |
 | Python 3.10+ on PATH, with [Pillow](https://pypi.org/project/pillow/) | usage, session lists, thumbnails, clipboard images |
 | Claude Code at `~/.local/bin/claude.exe` and the Claude desktop app | the Claude session list |
@@ -241,6 +241,54 @@ The terminal is left empty in the animation above so each scene is easy to see.
 
 ```powershell
 python -m pip install pillow
+```
+
+## macOS
+
+Everything works on macOS too. What differs:
+
+| What | On macOS |
+|---|---|
+| Requirements | macOS with Herdr, `python3` (3.9+) on PATH (Pillow optional: without it, `sips` makes thumbnails and AppleScript saves screenshots), `hc` and `git` on PATH |
+| Session lists | Claude Code transcripts in `~/.claude/projects`, the Claude desktop app's `~/Library/Application Support/Claude/claude-code-sessions`, and `codex` on PATH (or the Codex app) for the Codex list |
+| Extra accounts | any shell wrapper in `~/.local/bin` named `claude-<name>`, `claude<N>`, `codex-<name>` or `codex<N>` that sets `CLAUDE_CONFIG_DIR` / `CODEX_HOME` (see below) |
+| Claude usage | read from `.credentials.json` or, as Claude Code stores it on macOS, the login Keychain (`Claude Code-credentials`, or `Claude Code-credentials-<hash>` for another config dir). macOS may ask once to allow `security` to read it |
+| Caches | `~/Library/Caches/herdr-sessions` instead of `%LOCALAPPDATA%\herdr-sessions` |
+| Paste | Herdr's own `Cmd+V` already pastes text, copied files and screenshots, so you don't need the `ctrl-v` smart paste key |
+| Sprites | macOS draws colour fonts in one colour, so the pixel mods draw each sprite as a stack of one-colour layers (`*.ttf.layers.json` beside the fonts) |
+| Folded sidebar | the brand row is behind the traffic lights, so the unfold button sits at the top of the SPACES list |
+
+Install by hand:
+
+```sh
+git clone https://github.com/CHO-kr/frieren /tmp/frieren
+src=/tmp/frieren; h=~/.config/herdr-app
+taken=$(for m in "$src"/mods/*/; do n=$(basename "$m"); [ -e "$h/mods/$n" ] && echo "mods/$n"; done
+        for f in "$src"/layouts/* "$src"/themes/* "$src"/backgrounds/*; do r=${f#$src/}; [ -e "$h/$r" ] && echo "$r"; done)
+if [ -n "$taken" ]; then echo "Already there, rename before copying: $taken"; else
+  mkdir -p "$h"/layouts "$h"/themes "$h"/backgrounds "$h"/mods
+  for m in "$src"/mods/*/; do
+    n=$(basename "$m"); mkdir "$h/mods/$n"
+    cp "$m/mod.json" "$h/mods/$n/"   # first, so Herdr doesn't dock the mod into the layout you're looking at
+    rsync -a --exclude mod.json "$m" "$h/mods/$n/"
+  done
+  cp "$src"/layouts/* "$h"/layouts/; cp "$src"/themes/* "$h"/themes/; cp "$src"/backgrounds/* "$h"/backgrounds/
+fi
+for m in "$src"/mods/*/; do herdr-app check "$h/mods/$(basename "$m")"; done
+herdr-app do layout.switch --name frieren-pixel
+```
+
+Then merge the `layout:*` keys below into `keys.json`. **Never replace `keys.json`**: once it's edited,
+Herdr treats the whole file as yours, so a file with only these keys loses every default shortcut,
+`Cmd+V` and `Cmd+C` included. If that happened, `ctrl-alt-shift-escape` sets `keys.json` aside so the
+defaults come back (it also goes back to the default `main` layout), then merge these keys in again.
+
+A wrapper for a second account:
+
+```sh
+#!/bin/sh
+# ~/.local/bin/claude-work: Claude Code with a second account (chmod +x it)
+CLAUDE_CONFIG_DIR="$HOME/.claude-work" exec claude "$@"
 ```
 
 ## Install
@@ -279,8 +327,9 @@ if ($taken) { "Already there, rename before copying: $($taken -join ', ')" } els
 }
 ```
 
-Then **merge** the keys into your `~/.config/herdr-app/keys.json`. Don't replace the file, and check
-that you don't already use these keys:
+Then **merge** the keys into your `~/.config/herdr-app/keys.json`. Don't replace the file (Herdr would
+lose every default shortcut), and check that you don't already use these keys. On macOS leave out the
+`terminal` → `ctrl-v` key: `Cmd+V` already pastes files and screenshots:
 
 ```json
 {
@@ -405,7 +454,7 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
 
 ## Known limits
 
-- Windows only.
+- Windows and macOS. Linux paths are in place but untested.
 - `Ctrl+V` smart paste works only while one of these layouts is shown. In other layouts that binding
   does nothing: use `Ctrl+Shift+V`, or remove the `terminal` → `ctrl-v` key.
 - The Claude list needs the Claude desktop app. Without the Codex app's `state_5.sqlite`, the Codex list
@@ -486,7 +535,7 @@ in `LICENSES/`.
 
 ## 한국어 안내
 
-[Herdr](https://herdr.dev) 데스크톱 앱용 Windows 레이아웃 두 개예요. Claude Code와 Codex를 계정 여러
+[Herdr](https://herdr.dev) 데스크톱 앱용 Windows·macOS 레이아웃 두 개예요. Claude Code와 Codex를 계정 여러
 개로 나란히 쓰기 좋게 만들었고, 프리렌 세계의 여행 파티처럼 꾸몄어요. 화면 글자는 영어예요.
 설정 → Look → Layout에서 고르거나 `Ctrl+Shift+L`로 바꿔요.
 

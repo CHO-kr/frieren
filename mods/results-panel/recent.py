@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 
-APP = os.environ.get("HERDR_APP_HOME") or os.path.expanduser(r"~\.config\herdr-app")
+APP = os.environ.get("HERDR_APP_HOME") or os.path.join(os.path.expanduser("~"), ".config", "herdr-app")
 THUMBS = os.path.join(APP, ".thumbs")
 KINDS = {
     "image": {"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"},
@@ -24,7 +24,7 @@ KINDS = {
 KIND = {ext: kind for kind, exts in KINDS.items() for ext in exts}
 SKIP = {".git", "node_modules", "__pycache__", ".venv", "venv", ".cache", ".next", ".svelte-kit", "AppData", ".codex",
         ".claude", ".claude-2", ".npm", ".nuget", ".local", "$Recycle.Bin", "site-packages", ".gradle", ".idea", ".vscode",
-        ".thumbs", "Microsoft", "OneDrive"}
+        ".thumbs", "Microsoft", "OneDrive", "Library"}
 
 
 def cached(path, variant, ext):
@@ -46,9 +46,19 @@ def picture(path, size):
         if not os.path.exists(out):
             shutil.copyfile(path, out)
         return relative(out)
+    try:
+        from PIL import Image
+    except ImportError:
+        # macOS ships sips even when this Python has no Pillow.
+        if sys.platform != "darwin":
+            raise
+        out = cached(path, size, "png")
+        if not os.path.exists(out):
+            subprocess.run(["sips", "-s", "format", "png", "-Z", str(size), path, "--out", out],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=True)
+        return relative(out)
     out = cached(path, size, "png" if ext in ("png", "gif", "webp") else "jpg")
     if not os.path.exists(out):
-        from PIL import Image
         with Image.open(path) as im:
             im.thumbnail((size, size))
             if out.endswith(".jpg") and im.mode not in ("RGB", "L"):

@@ -1,14 +1,62 @@
 # Lists the Codex app's threads (ChatGPT/Codex desktop) as JSON for the codex-sessions mod.
 # Reads state_5.sqlite read-only; a held thread-writer lock means some process has the thread open.
 import base64
+import glob
 import json
-import msvcrt
 import os
 import re
 import sqlite3
 import sys
 
-home = os.environ.get("CODEX_HOME") or os.path.expanduser(r"~\.codex")
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
+HOME = os.path.expanduser("~")
+home = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
+
+
+def data_store():
+    if os.environ.get("HERDR_SESSIONS_DIR"):
+        return os.environ["HERDR_SESSIONS_DIR"]
+    if os.name == "nt":
+        return os.path.join(os.environ.get("LOCALAPPDATA", HOME), "herdr-sessions")
+    if sys.platform == "darwin":
+        return os.path.join(HOME, "Library", "Caches", "herdr-sessions")
+    return os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "herdr-sessions")
+
+
+STORE = data_store()
+
+
+def wrapper_homes():
+    """Executable codex* wrappers that explicitly set CODEX_HOME."""
+    pattern = os.path.join(HOME, ".local", "bin", "codex*.cmd" if os.name == "nt" else "codex*")
+    found = []
+    for path in sorted(glob.glob(pattern)):
+        if os.name != "nt" and not os.access(path, os.X_OK):
+            continue
+        try:
+            if os.path.getsize(path) > 256_000:
+                continue
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        match = re.search(r'^\s*(?:export\s+)?CODEX_HOME\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s#;&]+))', text, re.M | re.I)
+        if not match:
+            match = re.search(r'^\s*@?(?:set\s+)?"?CODEX_HOME=([^"\r\n]+)', text, re.M | re.I)
+        if not match:
+            continue
+        raw = next((value for value in match.groups() if value is not None), "").strip()
+        raw = raw.replace("%USERPROFILE%", HOME).replace("%HOME%", HOME)
+        folder = os.path.normpath(os.path.expanduser(os.path.expandvars(raw)))
+        if not os.path.isdir(folder):
+            continue
+        name = re.sub(r"\.cmd$", "", os.path.basename(path), flags=re.I)
+        found.append((name, folder))
+    return found
 
 # Strongest first, to pick a model an account can use when the thread's own isn't offered to it.
 PREFERENCE = ["gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
@@ -39,12 +87,24 @@ def account(name, path, main):
     return {"name": name, "cmd": name, "main": main, "email": email, "models": models, "best": best}
 
 
-# This account, and each ~/.local/share/codex-accounts/<name> with its ~/.local/bin/<name>.cmd.
+# This account, and executable wrappers which select another CODEX_HOME.
 accounts = [account("codex", home, True)]
-others = os.path.expanduser(r"~\.local\share\codex-accounts")
-for name in sorted(os.listdir(others)) if os.path.isdir(others) else []:
-    if os.path.isfile(os.path.expanduser(rf"~\.local\bin\{name}.cmd")):
-        accounts.append(account(name, os.path.join(others, name), False))
+seen_homes = {os.path.normcase(os.path.realpath(home))}
+for name, folder in wrapper_homes():
+    key = os.path.normcase(os.path.realpath(folder))
+    if key not in seen_homes:
+        accounts.append(account(name, folder, False))
+        seen_homes.add(key)
+if os.name == "nt":
+    # Preserve the original convention even if an unusual .cmd line was not parseable.
+    others = os.path.join(HOME, ".local", "share", "codex-accounts")
+    for name in sorted(os.listdir(others)) if os.path.isdir(others) else []:
+        folder = os.path.join(others, name)
+        wrapper = os.path.join(HOME, ".local", "bin", name + ".cmd")
+        key = os.path.normcase(os.path.realpath(folder))
+        if os.path.isfile(wrapper) and key not in seen_homes:
+            accounts.append(account(name, folder, False))
+            seen_homes.add(key)
 
 
 def strip(path):
@@ -54,8 +114,12 @@ def strip(path):
 def held(lock):
     try:
         with open(lock, "r+b") as f:
-            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
-            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            if os.name == "nt":
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         return False
     except OSError:
         return True
@@ -104,7 +168,7 @@ for (tid, name, title, preview, cwd, recency, updated, model, effort, approval, 
     })
 # Pairs with Claude sessions (session-menu\bridge.py).
 try:
-    with open(os.path.join(os.environ.get("LOCALAPPDATA", ""), "herdr-sessions", "links.json"), encoding="utf-8") as f:
+    with open(os.path.join(STORE, "links.json"), encoding="utf-8") as f:
         pairs = {(l.get("codex") or {}).get("thread"): l for l in json.load(f).get("links", [])}
 except (OSError, ValueError):
     pairs = {}
@@ -114,8 +178,7 @@ for t in threads:
 threads.sort(key=lambda t: t["last"] or 0, reverse=True)
 text = json.dumps({"home": home, "accounts": accounts, "threads": threads}, ensure_ascii=False)
 # The session-search mod reads the last list from here.
-store = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "herdr-sessions")
-os.makedirs(store, exist_ok=True)
-with open(os.path.join(store, "codex-list.json"), "w", encoding="utf-8") as f:
+os.makedirs(STORE, exist_ok=True)
+with open(os.path.join(STORE, "codex-list.json"), "w", encoding="utf-8") as f:
     f.write(text)
 sys.stdout.write(text)

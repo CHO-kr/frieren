@@ -11,6 +11,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -18,10 +19,23 @@ import threading
 import time
 import uuid
 
-STORE = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "herdr-sessions")
+HOME = os.path.expanduser("~")
+
+
+def data_store():
+    if os.environ.get("HERDR_SESSIONS_DIR"):
+        return os.environ["HERDR_SESSIONS_DIR"]
+    if os.name == "nt":
+        return os.path.join(os.environ.get("LOCALAPPDATA", HOME), "herdr-sessions")
+    if sys.platform == "darwin":
+        return os.path.join(HOME, "Library", "Caches", "herdr-sessions")
+    return os.path.join(os.environ.get("XDG_DATA_HOME", os.path.join(HOME, ".local", "share")), "herdr-sessions")
+
+
+STORE = data_store()
 LINKS = os.path.join(STORE, "links.json")
 HANDOFF = os.path.join(STORE, "handoff")
-CODEX_HOME = os.environ.get("CODEX_HOME") or os.path.expanduser(r"~\.codex")
+CODEX_HOME = os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex")
 LIMIT = 120_000  # characters handed over at once (~40-60k tokens); the newest part wins
 NOW = int(time.time() * 1000)
 
@@ -197,10 +211,14 @@ def codex_turns(thread, since):
 
 def codex_import(path, cwd, title):
     """Codex's own importer (the one the Codex desktop app uses) turns a Claude transcript into a thread."""
-    exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
-    if not exes:
-        sys.exit("codex.exe not found under %LOCALAPPDATA%\\OpenAI\\Codex\\bin")
-    proc = subprocess.Popen([exes[0], "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    if os.name == "nt":
+        exes = sorted(glob.glob(os.path.expandvars(r"%LOCALAPPDATA%\OpenAI\Codex\bin\*\codex.exe")), key=os.path.getmtime, reverse=True)
+        executable = exes[0] if exes else None
+    else:
+        executable = shutil.which("codex")
+    if not executable:
+        sys.exit("Codex executable not found.")
+    proc = subprocess.Popen([executable, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, cwd=cwd, encoding="utf-8", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     watchdog = threading.Timer(180, proc.kill)
     watchdog.daemon = True
@@ -286,7 +304,7 @@ def claude_path(link):
     c = link.get("claude") or {}
     if c.get("path") and os.path.isfile(c["path"]):
         return c["path"]
-    folders = [c.get("config"), os.path.expanduser(r"~\.claude")] + glob.glob(os.path.expanduser(r"~\.claude-*"))
+    folders = [c.get("config"), os.path.join(HOME, ".claude")] + glob.glob(os.path.join(HOME, ".claude-*"))
     for folder in filter(None, folders):
         found = glob.glob(os.path.join(folder, "projects", "*", f"{c.get('session')}.jsonl"))
         if found:
@@ -377,6 +395,8 @@ def to_claude(tid, config):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] not in ("to-codex", "to-claude"):
+        sys.exit("usage: bridge.py to-codex <claude-session.jsonl> <cwd> <title> | to-claude <codex-thread-id> <claude-config-dir>")
     verb, args = sys.argv[1], sys.argv[2:]
     result = to_codex(*args) if verb == "to-codex" else to_claude(*args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False))

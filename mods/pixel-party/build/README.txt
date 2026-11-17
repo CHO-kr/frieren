@@ -41,3 +41,8 @@ After a rebuild: raise FONT_VERSION in anim.py AND in lib.js (all three copies: 
 run anim.py and stage_art.py, delete the old FrierenDot<old>-*.ttf, then make one look change (switch layouts, or
 wait for the next scene) so Herdr loads the new families.
 Fonts: every glyph's hmtx lsb must equal its xMin, or Windows shifts each colour layer separately.
+macOS: Herdr there draws colour fonts in one colour and skips a family without an 'm'. colrfont.mac_layers (run by
+anim.py and stage_art.py on every font they write) adds an 'm', gives every colour layer its own code point (from
+U+F0000) and writes <font>.ttf.layers.json next to the font; on macOS pixel-party and pixel-pane draw each sprite as a
+stack of one-colour texts from it (lib.js layered). Delete the old FrierenDot<old>-*.ttf.layers.json with the fonts.
+To add the layers to fonts built before: python colrfont.py --mac-layers <fonts>/FrierenDot<v>-*.ttf
