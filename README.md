@@ -524,7 +524,8 @@ mods/ (the rest)                nine tool mods both layouts use (session lists, 
                                 herdr-sessions/spaces.py sorts sessions into spaces (spaces.example.json)
 keys.json                       the key bindings to merge
 RECIPE.md                       the full build brief (exact sizes, colors, behavior)
-preview.png                     the picture the Herdr gallery shows (Frieren Pixel)
+preview.png                     the picture the Herdr gallery shows (Frieren Pixel): the top-left of
+                                docs/frieren-pixel.png at 1.4×, 16:10 like the gallery's cards
 docs/                           the screenshots and animations in this README
 NOTICE, LICENSES/               attribution and license text for the derived code and the fonts
 ```
