@@ -181,6 +181,30 @@ lightness, so text reads the same in all of them.
 
 The terminal is left empty in the animation above so each scene is easy to see.
 
+### What your agents really did
+
+`pixel-chronicle` reads the conversation records of the sessions running in your tabs, Claude
+(`~/.claude*`) and Codex (every Codex home) alike, every 2 seconds, and only what was added. No hooks,
+no settings changed.
+
+- **MEM**: a third bar on party cards: how much of the conversation's context is left before it gets
+  summarized (Claude: the model's window or your `autoCompactWindow`; Codex: its own window). A member
+  at rest with half or less left shows **INN**: click it to type `/compact` (rest at the inn).
+- **Asks you**: an agent whose last turn ended with a question is not "Done": its card turns yellow with
+  a `?`, the pane header says `Asks you`, and the stage shows it waiting with a `?` instead of a victory.
+- **Real outcomes in battle**: a failed command or edit is a hit (the monster goes for that member: no
+  block, no dodge), three in a row enrage the monsters (RAGE!), a test run opens the fight with ALL CLEAR
+  or WOUNDED, and the victory chest holds the file the agent really made. Cards show the latest one as a
+  chip (`HIT`, `CLEAR`, `WOUNDED`, `RAGE ×3`).
+- **HELP!** (`Ctrl+Shift+H`, or the red `Needs you` / `HELP!` chips): a dialog with the waiting
+  agents' questions from every space, oldest first. Pick an option with its digit or the arrows; it
+  reads the screen again before sending, and sends nothing if the question changed.
+- **Since you left**: back after 15 minutes or more away, a window lists what happened: quests done,
+  questions, calls for help, hits and loot. **Journey log** (`Ctrl+Shift+J`, or the quill in the PARTY
+  header): the same, for every space, with filters.
+- **Loot**: files an agent made (pictures, videos, audio, documents) show first in the Results panel
+  under `LOOT DROPPED`, and in the stage's log.
+
 ### Also in Frieren Pixel
 
 - **Party cards**, as tall as their 64px stage, for members who work, need you or are done (on top):
@@ -194,7 +218,11 @@ The terminal is left empty in the animation above so each scene is easy to see.
 - **Small windows**: the usage bar shrinks and scrolls sideways, so the tabs and the window buttons
   always stay in view.
 - **Which account to use next**: in the usage bar a ★ marks the Claude account and the Codex account
-  with the most usage left (stale or logged-out readings don't count).
+  to use next: one whose weekly (or 30-day) leftover expires within two days comes first ("spend it
+  first"), else the one with the most room. An account whose 5-hour window is 90% full, or any window
+  100%, gets no ★. Stale or logged-out readings don't count. A thin tick on each bar shows how much of
+  the window's time has passed; the bar turns amber when use runs ahead of it, and the tooltip says when
+  it would run out at this rate.
 
   ![The usage bar and the tabs](docs/topbar.png)
 - **Tabs as inventory slots**, each with its member's pixel face and status. A tab you never named
@@ -202,7 +230,9 @@ The terminal is left empty in the animation above so each scene is easy to see.
   else its program (the tab itself isn't renamed; hover for where the name came from). A thin color bar
   beside each tab's face marks its project, the same color for every tab in the same repo.
 - **The + menu** (`pixel-new-menu`) lists Claude Code and Codex once per account (`claude`, `claude2`,
-  …), the one with the most usage left first, marked `most left`.
+  …) in the ★ order, each with why (`spend it first`, `most left`, …).
+- **Session lists in one tabbed panel**: `[Herdr] [Claude] [Codex]` tabs over the sidebar's lists, each
+  with a count of sessions that need you, are working, or finished while you weren't looking.
 - **Spaces as destinations**: eight pixel place tiles (Royal Capital, Old Ruins, Flower Hill, Forest
   Camp, Rampart Watchtower, Town Street, Starlit Old Tree, Moonlit Castle) with the repo's branch and
   ahead/behind. With one space the panel shrinks to a single row, leaving room for the party; a second
@@ -273,7 +303,8 @@ The terminal is left empty in the animation above so each scene is easy to see.
 - **Account on every pane**: each pane header shows `claude2 · Opus 5.5 · weekly 3%`, also for agents
   you typed by hand into a shell (read from the running process).
 - **Results panel** (`Ctrl+Shift+R` or the `Results` button): the newest files in the focused terminal's
-  folder, with image and video thumbnails, a preview window, and an "Attach to agent" button.
+  folder, with image and video thumbnails, a preview window (`←` / `→` step through the files), and an
+  "Attach to agent" button.
 - **Smart paste** (`Ctrl+V`): pastes text and copied files. A screenshot on the clipboard is saved as a
   PNG and attached, so Claude Code and Codex pick it up.
 
@@ -342,7 +373,9 @@ that you don't already use these keys:
   },
   "layout:frieren-pixel": {
     "ctrl-shift-s": "mod.open:session-search",
-    "ctrl-shift-r": "layout.toggle:results"
+    "ctrl-shift-r": "layout.toggle:results",
+    "ctrl-shift-h": "mod.open:pixel-help",
+    "ctrl-shift-j": "mod.open:pixel-chronicle"
   },
   "terminal": {
     "ctrl-v": "smart-paste.paste"
@@ -357,8 +390,8 @@ foreach ($m in Get-ChildItem "$env:TEMP\frieren\mods" -Directory) { herdr-app ch
 herdr-app do layout.switch --name frieren-pixel     # or frieren-journey
 ```
 
-Install all nineteen mods, even if you want only one layout. Nine tool mods collect usage, session
-lists and accounts. The four `journey-*` mods draw Frieren Journey, and the six `pixel-*` mods draw
+Install all twenty-two mods, even if you want only one layout. Nine tool mods collect usage, session
+lists and accounts. The four `journey-*` mods draw Frieren Journey, and the nine `pixel-*` mods draw
 Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spaces/places.json` and
 `pane-account`.
 
@@ -377,6 +410,9 @@ Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spac
 | Click / hover a usage chip | refresh now / see every window, its reset time, plan and login |
 | Right-click a Codex chip | spend one free reset pass (asks first; it can't be undone) |
 | `Ctrl+Shift+R` or `Results` | open the results panel for the focused terminal's folder |
+| `Ctrl+Shift+H` or a red `HELP!` chip (Frieren Pixel) | answer the waiting agents' questions from any space |
+| `Ctrl+Shift+J` or the quill in PARTY (Frieren Pixel) | the journey log: what every agent did, asked and made |
+| `INN` on a party card (Frieren Pixel) | type `/compact` into a resting agent whose context is filling up |
 | `Ctrl+V` in a terminal | paste text, files, or a screenshot as an attachment |
 | `Ctrl+Shift+B` | hide the sidebar (in Frieren Journey: fold it to a rail of faces) |
 
@@ -444,7 +480,9 @@ Log in once with each wrapper (`claude2`, `codex2`), then click the gauges to re
   where the space is made again if you closed it, and `about` the note in the right-click menu.
   `folders` sends a project folder (and everything under it) to a space; it decides alone when a
   session has fewer than `enough` weighted words. Folders may start with `~`. The lists sort again
-  every minute; changing `words` counts every transcript again once.
+  every minute; changing `words` counts every transcript again once. `all` names a space that shows
+  every space's sessions (`"all": "All"`): Frieren Pixel draws it as the World Map, as a chip in the
+  SPACES header, and clicking the chip makes that space again if you closed it.
 
   ```json
   { "key": "work", "name": "Work", "folder": "~", "about": "Clients and mail",
@@ -466,15 +504,21 @@ These mods are trusted code that runs on your machine. Before installing, know t
   and each account's login credentials (to read usage). The Herdr sessions panel also lists the
   processes under Herdr's terminals and asks Windows which of them holds a Codex thread's lock file.
   With a `spaces.json`, `spaces.py` reads the sessions' transcripts (what you and the agent wrote, not
-  tool output) to count your space words; only the counts are kept.
+  tool output) to count your space words; only the counts are kept. In Frieren Pixel, `pixel-chronicle`
+  reads the transcripts of the sessions open in your tabs, tool calls and their output included, to
+  find failures, test results, questions and made files; it keeps short lines (a command, a question, a
+  file path) in its journal.
+- **type into terminals** only when you click: HELP! sends the option you picked (a digit, a letter or
+  arrows, then Enter) after reading the screen again, and INN types `/compact`.
 - **use the network**: each Claude account's OAuth access token goes only to `api.anthropic.com`
   (usage and profile; never printed, stored or refreshed), and the Codex app-server talks to OpenAI.
   Nothing else goes out. What the party reads from agent screens stays on your machine. Claude
   sessions started with Remote Control (see above) are reachable from your Claude account, as
   Claude Code's own `--remote-control` makes them.
 - **write** caches to `%LOCALAPPDATA%\herdr-sessions` (including `herdr-made.json`, the sessions
-  started in Herdr, and `space-cache.json` / `space-map.json`, the space word counts and where each
-  session goes), `%LOCALAPPDATA%\herdr-claude-sessions` and `~/.config/herdr-app/.thumbs`. Nothing
+  started in Herdr, `space-cache.json` / `space-map.json`, the space word counts and where each
+  session goes, and `chronicle-state.json` / `journal.jsonl`, the journey log),
+  `%LOCALAPPDATA%\herdr-claude-sessions` and `~/.config/herdr-app/.thumbs`. Nothing
   writes to Claude's or Codex's own files. Frieren Pixel also rewrites the background and color lines of its
   own layout file once an hour.
 
@@ -496,16 +540,21 @@ Spending a Codex reset pass is permanent. It always asks for confirmation first.
   out `Retry-After` (`wait`).
 - An account whose usage has no 5-hour window shows HP as `—`.
 - The motions come from reading the agent's screen, so a tool the screen doesn't show reads as thinking.
+- "Asks you" goes by how the agent's last message ends (a `?`, or "let me know", "which one", …), so a
+  rhetorical question can count. HELP! answers single-choice prompts with up to 9 options; typed
+  answers and multi-select go to the terminal.
+- Outcomes need the session in Herdr's registry (a tab opened in Herdr, or resumed from the lists).
 - Herdr keeps a loaded font in memory. After rebuilding the sprite fonts, raise `FONT_VERSION`
   (see `mods/pixel-party/build/README.txt`).
 
 ## Uninstall
 
 Delete `layouts/frieren-*`, `themes/frieren-*`, `backgrounds/frieren.jpg`,
-`backgrounds/frieren-pixel-*.png`, the nineteen folders in `mods/` (`usage-gauge`,
+`backgrounds/frieren-pixel-*.png`, the twenty-two folders in `mods/` (`usage-gauge`,
 `herdr-sessions`, `claude-sessions`, `codex-sessions`, `session-menu`, `session-search`, `pane-account`, `results-panel`,
 `smart-paste`, `journey-chrome`, `journey-spaces`, `journey-party`, `journey-tabs`, `pixel-chrome`,
-`pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`) and the keys above. Switch back with
+`pixel-spaces`, `pixel-party`, `pixel-tabs`, `pixel-pane`, `pixel-new-menu`, `pixel-chronicle`, `pixel-help`,
+`pixel-session-tabs`) and the keys above. Switch back with
 `Ctrl+Shift+L`.
 
 ## What's in this repo
@@ -515,7 +564,7 @@ layouts/frieren-pixel.json      Frieren Pixel (and frieren-pixel.png, its settin
 layouts/frieren-journey.json    Frieren Journey (and frieren-journey.png)
 themes/                         frieren-pixel (deep navy and cream) and frieren-journey (navy and gold)
 backgrounds/                    seven 2560×1440 pixel scenes and the Journey wallpaper
-mods/pixel-*                    the six Frieren Pixel mods: sprite, monster, effect, special and prop fonts, faces,
+mods/pixel-*                    the nine Frieren Pixel mods: sprite, monster, effect, special and prop fonts, faces,
                                 tiles, icons, Galmuri fonts, the scenes' palettes (pixel-chrome/scenes.js),
                                 the stage strips (pixel-party/scenes/) and card stages (pixel-party/backdrops/)
 mods/pixel-party/build/         scripts and cut sprites that build all of the above
@@ -591,6 +640,17 @@ in `LICENSES/`.
   항상 보여요. 파티 카드는 HP·MP 위를 두 줄로 줄였어요.
 - **픽셀 화면:** 탭은 인벤토리 칸, 스페이스는 픽셀 여행지 그림이에요. 사이드바는 64px로 접을 수
   있고, 글꼴은 갈무리(Galmuri)예요.
+- **에이전트가 실제로 한 일:** Claude·Codex 대화 기록을 읽어서(훅·설정 변경 없음) 카드에 MEM(대화 기억
+  잔량) 막대를 달고, 쉬는 중인데 잔량이 적으면 INN 버튼으로 `/compact`를 입력해요. 질문으로 끝난
+  에이전트는 노란 `?`와 `Asks you`로 표시돼요. 명령이 실패하면 몬스터에게 맞고, 3번 연속이면 RAGE,
+  테스트를 통과하면 ALL CLEAR로 싸움이 시작되고, 승리 상자에는 실제로 만든 파일이 들어가요.
+- **HELP!:** `Ctrl+Shift+H`나 빨간 칩을 누르면 모든 스페이스에서 답을 기다리는 질문을 한 창에서
+  번호로 답해요. 보내기 직전에 화면을 다시 읽어서 질문이 바뀌었으면 보내지 않아요.
+- **자리 비운 사이 보고서·여정일지:** 15분 넘게 비웠다 돌아오면 그동안의 일을 보여 주고,
+  `Ctrl+Shift+J`(또는 PARTY의 깃펜)로 전체 여정일지를 봐요.
+- **세션 목록 탭:** 세 세션 목록을 `[Herdr] [Claude] [Codex]` 탭 하나로 합쳤어요.
+- **다음에 쓸 계정 ★:** 이틀 안에 초기화되는데 남은 양이 있는 계정을 먼저 추천하고, 5시간 한도가 90%
+  넘은 계정은 빼요. 막대의 눈금은 시간이 얼마나 지났는지 보여 줘요.
 
 ### 두 레이아웃 공통
 
@@ -607,7 +667,8 @@ in `LICENSES/`.
 - **세션 찾기:** `Ctrl+Shift+S`로 모든 세션을 제목·폴더·스페이스 이름으로 검색해요.
 - **사용량과 계정 표시:** 위쪽 막대에 계정별 사용량이 보이고, 창마다 어떤 계정과 모델로 돌고 있는지
   표시돼요. 카드의 HP는 5시간 한도, MP는 주간 한도에서 남은 양이에요.
-- **결과물 패널:** `Ctrl+Shift+R`로 지금 폴더의 최신 파일을 미리보기와 함께 열어요.
+- **결과물 패널:** `Ctrl+Shift+R`로 지금 폴더의 최신 파일을 미리보기와 함께 열어요. 미리보기에서
+  `←`/`→`로 넘겨 봐요.
 - **스크린샷 붙여넣기:** `Ctrl+V`로 붙여 넣으면 첨부 파일로 들어가요.
 
 설치는 Herdr 터미널에서 에이전트에게

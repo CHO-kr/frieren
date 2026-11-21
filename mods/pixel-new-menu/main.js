@@ -1,5 +1,6 @@
-// The frieren-pixel + menu: Herdr's new-menu (cloned 2026-11-16) with Claude Code and Codex listed per account, the
-// account with the most usage left first with a "most left" note (accounts.js; usage-gauge shares which one).
+// The frieren-pixel + menu: Herdr's new-menu (cloned 2026-11-16) with Claude Code and Codex listed per account, in
+// usage-gauge's ranking: the ★ account first with its note ("spend first", "most left"), its reason in the tooltip
+// (accounts.js; usage-gauge shares the ranking).
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { theme, spaces, panes, knownAgents, run, openOverlay, closeOverlay, props, window, keys, shared, setShared, checking } from "herdr";
@@ -15,7 +16,7 @@ const SAMPLE = {
     { key: "codex", name: "Codex", icon: "icons/codex.svg", tint: true, run: ["codex", "--no-daemon"], installed: true },
   ],
   accounts: { claude: [{ name: "claude", cmd: "claude", main: true }, { name: "claude2", cmd: "claude2" }], codex: [{ name: "codex", cmd: "codex", main: true }, { name: "codex2", cmd: "codex2" }] },
-  best: { claude: { name: "claude2", used: 10 }, codex: null },
+  best: { claude: { name: "claude2", used: 70, left: 30, why: "claude2: 30% left resets in 3h — spend it first", tag: "spend first", order: ["claude2", "claude"] }, codex: null },
 };
 
 function shortcut(name) {
@@ -77,7 +78,7 @@ export default class NewMenu extends View {
     const rows = agentRows(choices, accounts, this.sample?.best ?? shared("usage.roomiest"));
     const startable = rows.filter(r => r.installed);
     const start = (r) => run("tab.new", { name: r.tab, space: space?.id, argv: r.run });
-    const tipOf = (r) => (r.account ? `${r.agent} · ${r.account}${r.most ? "\nMost left: start new work here" : ""}` : null);
+    const tipOf = (r) => (r.account ? `${r.agent} · ${r.account}${r.most ? `\n${r.why ?? "Most left: start new work here"}` : ""}` : null);
     return v_flex().min_h(0).w_full().h(Math.min(539, 167 + Math.max(1, rows.length + (this.failed ? 1 : 0)) * 31)).bg(t.popover).p(5).text_size(12.8)
       .id("new-menu").track_focus(this.handle)
       .on_key_down((e) => {
@@ -93,7 +94,7 @@ export default class NewMenu extends View {
         .children(rows.map((r) => {
           const n = startable.indexOf(r);
           return this.row(r.key, r.tint ? svg(r.icon).size(14).text_color(t.foreground) : image(r.icon).size(14), r.name,
-            () => start(r), r.installed ? (n >= 0 && n < 9 ? String(n + 1) : "") : "not installed", r.installed, r.most ? MOST_LEFT : null, tipOf(r));
+            () => start(r), r.installed ? (n >= 0 && n < 9 ? String(n + 1) : "") : "not installed", r.installed, r.most ? r.note ?? MOST_LEFT : null, tipOf(r));
         }))
         .when(this.failed || this.agents.length === 0, el => el.child(div().px(9).py(6).text_color(t.dim).child(this.failed ? "Could not check installed agents" : "Checking installed agents…"))))
       .child(div().h(1).mx(4).my(5).bg(t.border))

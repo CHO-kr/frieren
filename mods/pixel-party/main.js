@@ -7,18 +7,46 @@
 // Writes only shared("journey.party") (character picks, the same as the journey layout's) and shared("pixel.activity").
 // An agent that reports no status to Herdr (a Claude Code background job: its pane says claude, agents() lacks it) is
 // listed too, its status read from its screen (shared in pixel.activity as `status`).
-// Members who need you, work or are done get a full card, on top; the others a one-line row.
+// Members who need you, work, are done or asked you something get a full card, on top; the others a one-line row.
+// pixel-chronicle's shared("pixel.deeds") adds, per member: MEM (how much of its conversation's context is left; INN
+// sends /compact while it rests), "Asks you" when its last turn ended with a question, and its latest outcome (a hit
+// for a failed command, CLEAR / WOUNDED for a test run, RAGE after 3 failures in a row).
 import { View, div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, panes, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking } from "herdr";
+import { agents, panes, spaces, terminals, appHome, home, readTextFile, exec, hc, run, setAgentOrder, theme, shared, setShared, layout, checking, openOverlay } from "herdr";
 import { ROSTER, character, facePath, familyOf, frames, battleLine, classify, screenStatus, isAgentPane, entriesFor, agentKey, settle, launched, modelName, cleanText, gauges, ART, alpha, backdrop, ACTING } from "./lib.js";
 
 const HOME = appHome();
 const JOBS_FILE = `${HOME}/mods/journey-party/jobs.json`;
 const WHO = `${HOME}/mods/pane-account/who.py`;
 const DATA = () => `${home()}/AppData/Local/herdr-sessions`;
-const STATUS = { working: "Acting", blocked: "Needs help", done: "Done", idle: "Resting" };
-const ORDER = { blocked: 0, working: 1, done: 2 };
+const STATUS = { working: "Acting", blocked: "Needs help", done: "Done", idle: "Resting", asks: "Asks you" };
+const ORDER = { blocked: 0, asks: 1, working: 1, done: 2 };
+const ASK = "#ffd35a"; // a question waits for the person
+const MEM = "#c49bff";
+const kTok = (n) => (n >= 1000000 ? `${(n / 1000000).toFixed(n % 1000000 ? 1 : 0)}M` : `${Math.round(n / 1000)}k`);
+const deedsOf = (address) => shared("pixel.deeds")?.terminals?.[address] ?? null;
+// An agent at rest whose last turn ended with a question: it waits for an answer, not done.
+const asks = (a, d) => Boolean(d?.question) && (a.status === "done" || a.status === "idle");
+// What's left of its context, as a gauge like HP and MP.
+function memGauge(c) {
+  if (!c) return { pct: null, text: "—", tip: "MEM (context): not read yet" };
+  const left = Math.max(0, 100 - c.pct);
+  return { pct: left, text: `${left}%`, tip: `MEM (context): ${kTok(c.used)} of ${kTok(c.full)} used · ${left}% left\nAt ${kTok(c.full)} the conversation is summarized and its details are forgotten.` };
+}
+// The latest outcome worth a chip: [label, color, tip] or null.
+function outcomeChip(d, t, now) {
+  if (!d) return null;
+  if (d.streak >= 3 && d.hit) return [`RAGE ×${d.streak}`, t.blocked, `${d.streak} failures in a row. Latest: ${d.hit.detail}`];
+  const tests = d.tests;
+  if (tests && now - tests.at < 10 * 60000) {
+    const n = tests.passed != null || tests.failed ? ` (${tests.passed ?? 0} passed${tests.failed ? `, ${tests.failed} failed` : ""})` : "";
+    if (!tests.ok) return ["WOUNDED", t.blocked, `The check failed${n}\n${tests.detail}`];
+    if (!d.hit || d.hit.at < tests.at) return ["CLEAR", t.done, `ALL CLEAR: the check passed${n}\n${tests.detail}`];
+  }
+  if (d.hit && now - d.hit.at < 3 * 60000) return [d.wounds > 1 ? `HIT ×${d.wounds}` : "HIT", t.blocked, `${d.hit.what === "edit" ? "An edit failed" : "A command failed"}: ${d.hit.detail}`];
+  return null;
+}
 
 // Agent panes agents() doesn't list, shaped like agents() rows
 function unreported() {
@@ -73,6 +101,9 @@ export default class PixelParty extends View {
     this.load(cx);
     cx.timer.every(60000, (cx) => this.load(cx));
     cx.timer.every(5000, (cx) => this.ask(cx));
+    // outcome chips (HIT, CLEAR) fade after a few minutes even when nothing else redraws the party
+    cx.timer.every(30000, (cx) => { if (shared("pixel.deeds")) cx.notify(); });
+    this.resting = new Set(); // terminals sent /compact: the INN button waits until it's done
     if (checking()) return;
     // What each working agent is doing: its screen, read every 1.5 s while it works.
     cx.timer.every(1500, (cx) => this.watch(cx));
@@ -168,27 +199,61 @@ export default class PixelParty extends View {
     return { account, codex, model: modelName(model), title: cleanText(session?.title, 60), usage, pending: !account && !found };
   }
 
-  // A JRPG gauge: 10 blocks, lit by what's left.
-  bar(id, label, g, color, t) {
+  // A JRPG gauge: 10 blocks, lit by what's left. extra: an element at its end (MEM's INN button).
+  bar(id, label, g, color, t, extra = null) {
     const lit = g.pct == null ? 0 : Math.round(g.pct / 10);
     const low = g.pct != null && g.pct <= 20;
     return h_flex().id(id).w_full().min_w(0).h(12).gap(5).items_center().tooltip(g.tip)
-      .child(div().w(16).flex_none().font_family("Galmuri9").text_size(10).text_color(color).child(label))
+      .child(div().w(22).flex_none().font_family("Galmuri9").text_size(10).text_color(color).child(label))
       .child(h_flex().flex_none().gap(1).children(Array.from({ length: 10 }, (_, i) =>
         div().w(6).h(6).bg(i < lit ? (low ? t.blocked : color) : `${t.raised}`).when(i < lit, (el) => el.border_t(1).border_color("#ffffff40")))))
-      .child(div().flex_1().min_w(0).font_family("Galmuri9").text_size(10).text_color(g.stale ? t.dim : t.foreground).child(g.text));
+      .child(div().flex_1().min_w(0).font_family("Galmuri9").text_size(10).text_color(g.stale ? t.dim : t.foreground).child(g.text))
+      .when(Boolean(extra), (el) => el.child(extra));
+  }
+
+  // INN: a member at rest with little context left can rest at the inn: /compact summarizes its conversation.
+  // Typed key by key (hc send would wrap it as a message), only while it rests (not working, not asking for help).
+  inn(a, d, t) {
+    const c = d?.context;
+    if (!c || c.pct < 50 || (a.status !== "idle" && a.status !== "done") || !d.kind) return null;
+    const busy = this.resting.has(a.address);
+    return div().id(`inn-${a.address}`).flex_none().px(3).h(11).flex().items_center().border(1)
+      .border_color(busy ? alpha(t.border, "60") : MEM).font_family("Galmuri9").text_size(9).text_color(busy ? t.dim : MEM)
+      .cursor_pointer().hover((s) => s.bg(alpha(MEM, "24")))
+      .tooltip(busy ? "Resting at the inn… (/compact sent)"
+        : `Rest at the inn: types /compact into this ${d.kind === "codex" ? "Codex" : "Claude"} session, which summarizes the conversation and frees its memory (${100 - c.pct}% left).`)
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (busy) return;
+        const now = agents().find((x) => x.address === a.address);
+        if (now && now.status !== "idle" && now.status !== "done") return;
+        this.resting.add(a.address);
+        cx.spawn(async (cx) => {
+          try {
+            await hc(["keys", a.address, "--", ..."/compact".split("")]);
+            await hc(["keys", a.address, "enter"]);
+          } catch {}
+          cx.notify();
+        });
+        cx.timer.after(120000, (cx) => { this.resting.delete(a.address); cx.notify(); });
+        cx.notify();
+      })
+      .child("INN");
   }
 
   card(a, ch, now, t, act) {
     const f = this.facts(a);
-    const frame = a.status === "blocked" ? t.blocked : a.focused ? t.accent : alpha(t.border, "80");
-    const statusColor = t[a.status] ?? t.dim;
+    const d = deedsOf(a.address);
+    const q = asks(a, d);
+    const frame = a.status === "blocked" ? t.blocked : q ? ASK : a.focused ? t.accent : alpha(t.border, "80");
+    const statusColor = q ? ASK : t[a.status] ?? t.dim;
     const tagColor = f.codex ? t.unknown : t.accent;
     const g = gauges(f.usage, now);
     const who = [f.account ?? (f.pending ? "checking account" : null), f.model].filter(Boolean).join(" · ");
     const line = battleLine(ch, a.status, act);
-    const statusText = a.status === "working" ? (ACTING[line.anim] ?? STATUS.working) : (STATUS[a.status] ?? a.status ?? "");
-    const tip = `${ch.name} · ${ch.role}\n${line.detail ? `${line.text}  ${line.detail}` : line.text}`;
+    const statusText = a.status === "working" ? (ACTING[line.anim] ?? STATUS.working) : q ? STATUS.asks : (STATUS[a.status] ?? a.status ?? "");
+    const out = outcomeChip(d, t, now);
+    const tip = `${ch.name} · ${ch.role}\n${q ? `Asks you: ${d.question.text}` : line.detail ? `${line.text}  ${line.detail}` : line.text}`;
     // Two lines over the gauges, so a card is as tall as its 64 px stage.
     return h_flex()
       .id(`party-${a.address}`)
@@ -205,24 +270,38 @@ export default class PixelParty extends View {
       .hover((s) => s.bg(t.hover))
       .on_click(() => this.go(a))
       .child(
-        // the battle tile: a strip of ground under the sprite
+        // the battle tile: a strip of ground under the sprite; "?" over it while a question waits
         div().relative().flex_none().w(SOLO_W).h(SPR_H).border(0)
-          .child(image(backdrop(shared("pixel.scene"), true)).absolute().left(0).top(0).w(SOLO_W).h(SPR_H).when(a.status === "idle", (el) => el.opacity(0.7)))
-          .child(div().absolute().left(0).top(0).child(sprite(ch, line.anim, true, `spr-${a.address}`))),
+          .child(image(backdrop(shared("pixel.scene"), true)).absolute().left(0).top(0).w(SOLO_W).h(SPR_H).when(a.status === "idle" && !q, (el) => el.opacity(0.7)))
+          .child(div().absolute().left(0).top(0).child(sprite(ch, line.anim, true, `spr-${a.address}`)))
+          .when(q, (el) => el.child(div().id(`ask-${a.address}`).absolute().right(2).top(0).text_size(16).font_semibold().text_color(ASK)
+            .loop("opacity", { from: 0.35, to: 1, period: 1100 }).child("?"))),
       )
       .child(
         v_flex().flex_1().min_w(0).gap(3)
           .child(h_flex().w_full().min_w(0).gap(6).items_center()
             .when(a.focused, (el) => el.child(svg("mods/pixel-chrome/icons/cursor.svg").size(10).flex_none().text_color(t.accent)))
             .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(a.tab_name || a.address))
-            .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(a.status === "working" ? t.working : statusColor).child(statusText)))
+            .when(Boolean(out), (el) => el.child(div().id(`out-${a.address}`).flex_none().px(3).border(1).border_color(out[1])
+              .font_family("Galmuri9").text_size(9).text_color(out[1]).tooltip(out[2]).child(out[0])))
+            .child(a.status === "blocked"
+              // a call for help is answered right here (pixel-help) without going to its space
+              ? div().id(`help-${a.address}`).flex_none().px(3).border(1).border_color(t.blocked).font_family("Galmuri9").text_size(10)
+                .text_color(t.blocked).cursor_pointer().hover((s) => s.bg(alpha(t.blocked, "30"))).tooltip("Answer it here (HELP!, Ctrl+Shift+H)")
+                .on_click((_e, cx) => {
+                  cx.stop_propagation();
+                  openOverlay({ mod: "pixel-help", kind: "dialog", width: 620, height: 470, frame: "none", props: { terminal: a.address } });
+                })
+                .child("HELP!")
+              : div().flex_none().font_family("Galmuri9").text_size(10).text_color(a.status === "working" ? t.working : statusColor).child(statusText)))
           .child(h_flex().w_full().min_w(0).gap(5).items_center().font_family("Galmuri9").text_size(10)
             .child(div().flex_none().text_color(ch.color).child(ch.name))
             .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(who || (isAgent(a) ? "" : line.text)))
             .when(isAgent(a), (el) => el.child(div().flex_none().px(3).border(1).border_color(tagColor).text_color(tagColor).child(f.codex ? "Codex" : "Claude"))))
           .when(isAgent(a), (el) => el
             .child(this.bar(`hp-${a.address}`, "HP", g.hp, "#7fe0b8", t))
-            .child(this.bar(`mp-${a.address}`, "MP", g.mp, "#86b4ff", t))),
+            .child(this.bar(`mp-${a.address}`, "MP", g.mp, "#86b4ff", t))
+            .when(Boolean(d?.context), (el) => el.child(this.bar(`mem-${a.address}`, "MEM", memGauge(d.context), MEM, t, this.inn(a, d, t))))),
       );
   }
 
@@ -235,7 +314,9 @@ export default class PixelParty extends View {
   row(a, ch, now, t) {
     const f = this.facts(a);
     const g = gauges(f.usage, now);
-    const tip = `${ch.name} · ${ch.role}\n${[f.account, f.model].filter(Boolean).join(" · ") || battleLine(ch, a.status, null).text}${g.hp?.tip ? `\n${g.hp.tip}` : ""}`;
+    const d = deedsOf(a.address);
+    const m = d?.context ? memGauge(d.context) : null;
+    const tip = `${ch.name} · ${ch.role}\n${[f.account, f.model].filter(Boolean).join(" · ") || battleLine(ch, a.status, null).text}${g.hp?.tip ? `\n${g.hp.tip}` : ""}${m ? `\n${m.tip}` : ""}`;
     return h_flex()
       .id(`party-${a.address}`)
       .w_full()
@@ -256,12 +337,15 @@ export default class PixelParty extends View {
       .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(ch.color).child(ch.name))
       .when(g.hp?.pct != null, (el) => el.child(div().flex_none().font_family("Galmuri9").text_size(10)
         .text_color(g.hp.pct <= 20 ? t.blocked : t.dim).child(`HP ${g.hp.pct}%`)))
+      .when(m?.pct != null && m.pct <= 50, (el) => el.child(div().flex_none().font_family("Galmuri9").text_size(10)
+        .text_color(m.pct <= 20 ? t.blocked : MEM).child(`MEM ${m.pct}%`)))
+      .when(Boolean(this.inn(a, d, t)), (el) => el.child(this.inn(a, d, t)))
       .child(div().flex_none().font_family("Galmuri9").text_size(10).text_color(t.dim).child(STATUS[a.status] ?? "Shell"));
   }
 
   // Folded sidebar: face and a status pip.
   compact(a, ch, t) {
-    const color = t[a.status] ?? null;
+    const color = asks(a, deedsOf(a.address)) ? ASK : t[a.status] ?? null;
     return div().id(`party-${a.address}`).relative().size(36).flex_none().border(2)
       .border_color(a.status === "blocked" ? t.blocked : a.focused ? t.accent : alpha(t.border, "80"))
       .cursor_pointer().on_click(() => this.go(a))
@@ -292,6 +376,9 @@ export default class PixelParty extends View {
     }
     const working = list.filter((a) => a.status === "working").length;
     const blocked = list.filter((a) => a.status === "blocked").length;
+    const asking = list.filter((a) => asks(a, deedsOf(a.address))).length;
+    // a member asking you something sorts and shows like one that needs you
+    const rank = (a) => (asks(a, deedsOf(a.address)) ? "asks" : a.status);
     return v_flex()
       .id("pixel-party")
       .size_full()
@@ -304,11 +391,16 @@ export default class PixelParty extends View {
         .child(div().font_family("Galmuri9").text_size(10).text_color(t.muted).child(`${list.length} ${list.length === 1 ? "member" : "members"}`))
         .child(div().flex_1())
         .when(blocked > 0, (el) => el.child(div().font_family("Galmuri9").text_size(10).text_color(t.blocked).child(`${blocked} need help`)))
-        .when(working > 0, (el) => el.child(div().font_family("Galmuri9").text_size(10).text_color(t.working).child(`${working} acting`))))
+        .when(asking > 0, (el) => el.child(div().font_family("Galmuri9").text_size(10).text_color(ASK).child(`${asking} ask${asking > 1 ? "" : "s"}`)))
+        .when(working > 0, (el) => el.child(div().font_family("Galmuri9").text_size(10).text_color(t.working).child(`${working} acting`)))
+        .child(div().id("party-log").flex_none().p(2).text_color(t.dim).cursor_pointer().hover((s) => s.text_color("#ffc25c"))
+          .tooltip("Journey log: every space's quests, calls for help, hits and loot (Ctrl+Shift+J)")
+          .on_click(() => openOverlay({ mod: "pixel-chronicle", kind: "window", key: "journey-log", width: 700, height: 560, props: {} }))
+          .child(svg("mods/pixel-chrome/icons/quill.svg").size(12))))
       .child(
         v_flex().flex_1().min_h(0).gap(4).p(6).overflow_y_scrollbar()
-          .children(list.map((a, i) => [a, i]).sort(([a, i], [b, j]) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || i - j)
-            .map(([a]) => (a.status in ORDER
+          .children(list.map((a, i) => [a, i]).sort(([a, i], [b, j]) => (ORDER[rank(a)] ?? 3) - (ORDER[rank(b)] ?? 3) || i - j)
+            .map(([a]) => (rank(a) in ORDER
               ? this.card(a, chOf(a), now, t, this.activity[a.address] ?? shared("pixel.activity")?.[a.address])
               : this.row(a, chOf(a), now, t))))
           .when(list.length === 0, (el) => el.child(div().p(10).text_size(12).text_color(t.dim).child("No companions yet. Start an agent in a tab and it joins the party."))),

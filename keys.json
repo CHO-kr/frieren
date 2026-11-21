@@ -5,7 +5,9 @@
   },
   "layout:frieren-pixel": {
     "ctrl-shift-s": "mod.open:session-search",
-    "ctrl-shift-r": "layout.toggle:results"
+    "ctrl-shift-r": "layout.toggle:results",
+    "ctrl-shift-h": "mod.open:pixel-help",
+    "ctrl-shift-j": "mod.open:pixel-chronicle"
   },
   "terminal": {
     "ctrl-v": "smart-paste.paste"

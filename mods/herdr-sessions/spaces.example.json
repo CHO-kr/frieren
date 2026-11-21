@@ -30,5 +30,6 @@
     "~/.config/herdr-app": "tools",
     "~/.codex": "tools"
   },
-  "enough": 8
+  "enough": 8,
+  "all": "All"
 }

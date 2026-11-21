@@ -3,13 +3,16 @@
 // Hovering tells every window and when it resets, a click reads again. usage.py reads, every 5 minutes.
 // Props (optional): { "font": "Galmuri9", "size": 10 } sets the chips' font and size; a wide pixel font
 // otherwise runs the name into the percent ("claude2" + "29%"), as in frieren-pixel.
-// The Claude account and the Codex account with the most left (fresh numbers only, roomiest.js) get a ★ and an accent
-// edge, and are shared as "usage.roomiest" ({ claude, codex }: { name, used } | null) for the + menu (pixel-new-menu).
+// The Claude account and the Codex account to start new work on (fresh numbers only; leftover that resets soon first,
+// never one about to hit a limit: roomiest.js) get a ★ and an accent edge, and are shared as "usage.roomiest"
+// ({ claude, codex }: { name, used, left, why, tag, order } | null) for the + menu (pixel-new-menu).
+// A bar's thin tick marks how much of its window's time has gone; a bar whose use runs ahead of that tick (it would
+// run out before the reset) turns amber, unless it is at 90% or more (red wins).
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout, props } from "herdr";
-import { roomiest, isRoomiest, MOST_LEFT_TIP } from "./roomiest.js";
+import { exec, theme, appHome, home, readTextFile, shared, setShared, nextCommand, openOverlay, notify, run, layout, props, checking } from "herdr";
+import { roomiest, isRoomiest, pace, spanName } from "./roomiest.js";
 
 const alpha = (c, a) => `${String(c ?? "#000000").slice(0, 7)}${a}`;
 
@@ -43,6 +46,14 @@ function until(ms, now) {
   return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// "Tue 14:00" within the next 6 days, else "11/30 14:00".
+function clock(ms, now) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, "0");
+  const day = ms - now < 6 * 86400000 ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()] : `${d.getMonth() + 1}/${d.getDate()}`;
+  return `${day} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // 43011.06 → "43.0k"; the exact number is in the tooltip.
 function compact(n) {
   if (n == null) return "";
@@ -54,23 +65,30 @@ function ago(ms, now) {
   return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
 }
 
+// How often usage.py reads the providers. A start (a reload of this file, a `herdr-app check`, another layout) reads
+// only when the last reading is this old, so saving the mod doesn't ask the providers again (Claude answers 429 then).
+const EVERY = 5 * 60000;
+
 export default class UsageGauge extends View {
   init(_props, cx) {
     this.data = null;
     this.busy = false;
     cx.spawn(async (cx) => {
-      // The last reading first, so the bar isn't empty while the new one comes in.
+      // The last reading first, so the bar isn't empty while the new one comes in. The file may start with a BOM.
       try {
         const text = await readTextFile(CACHE());
         if (text && !this.data) {
-          this.data = JSON.parse(text);
+          this.data = JSON.parse(text.replace(/^﻿/, ""));
           share(this.data);
         }
       } catch {}
       cx.notify();
-      this.refresh(cx);
+      if (!checking() && this.due()) this.refresh(cx);
     });
-    cx.timer.every(5 * 60000, (cx) => this.refresh(cx));
+    if (checking()) return;
+    cx.timer.every(60000, (cx) => {
+      if (this.due()) this.refresh(cx);
+    });
     // "usage-gauge.refresh": read now (after a reset pass is spent).
     cx.spawn(async (cx) => {
       for (;;) {
@@ -100,9 +118,16 @@ export default class UsageGauge extends View {
     });
   }
 
+  // The last reading (and the last try, if it failed) is about EVERY old, or there is none.
+  due() {
+    const last = Math.max(typeof this.data?.at === "number" ? this.data.at : 0, this.tried ?? 0);
+    return Date.now() - last >= EVERY - 30000;
+  }
+
   refresh(cx) {
     if (this.busy) return;
     this.busy = true;
+    this.tried = Date.now();
     cx.notify();
     cx.spawn(async (cx) => {
       try {
@@ -121,14 +146,34 @@ export default class UsageGauge extends View {
     const t = theme();
     const now = Date.now();
     const level = (used) => (used >= 90 ? t.blocked : used >= 70 ? t.working : t.done);
-    const bar = (w, span) => div().w_full().h(3).rounded(2).bg(t.raised)
-      .child(div().h_full().rounded(2).w(Math.max(2, Math.round(span * Math.min(100, w.used ?? 0) / 100))).bg(w.used == null ? t.dim : level(w.used)));
+    // A window's bar: the fill, amber when ahead of pace (red at 90% still wins), and a tick where the window's time
+    // stands. `at` is when the numbers were read.
+    const bar = (w, at) => {
+      const p = pace(w, now, at);
+      const color = w.used == null ? t.dim : w.used < 90 && p?.ahead ? t.ansi3 : level(w.used);
+      return div().relative().w_full().h(3).rounded(2).bg(t.raised)
+        .child(div().h_full().rounded(2).min_w(2).w(`${Math.min(100, Math.max(0, w.used ?? 0))}%`).bg(color))
+        .when(Boolean(p), (el) => el.child(div().absolute().top(-2).left(`${Math.round(p.elapsed * 1000) / 10}%`).w(1).h(7).bg(t.foreground)));
+    };
+    // A window's tooltip line: its use, how much of its time has gone, and when it runs out if it is ahead of pace.
+    const line = (w, at) => {
+      if (w.used == null) return `${w.label}: unknown (reset since the last reading, ${w.was}%)`;
+      const resets = w.resets ? ` · resets ${until(w.resets, now)}` : "";
+      const p = pace(w, now, at);
+      if (!p) return `${w.label}: ${w.used}%${resets}`;
+      const gone = `${Math.round(p.elapsed * 100)}% of the ${spanName(p.minutes)} gone`;
+      if (w.used >= 100) return `${w.label}: limit reached, ${gone}${resets}`;
+      const ahead = p.ahead ? ` — ahead of pace; at this rate it runs out around ${clock(p.runsOut, now)}` : "";
+      return `${w.label}: ${w.used}% used, ${gone}${ahead}${resets}`;
+    };
     const accounts = this.data?.accounts ?? [];
     const best = roomiest(accounts, now);
     if (JSON.stringify(shared("usage.roomiest") ?? null) !== JSON.stringify(best)) setShared("usage.roomiest", best);
 
     const chip = (a) => {
       const most = isRoomiest(best, a);
+      const star = most ? `★ ${best[a.agent].why}` : null;
+      const at = typeof a.checked === "number" ? a.checked : now;
       // A failed read keeps the last numbers, but a window that has reset since then no longer
       // has that use: it shows as unknown (empty bar), not the old percent (codex4 showed 98%
       // for a 5-hour window that had reset hours before, 2026-11-04).
@@ -140,14 +185,12 @@ export default class UsageGauge extends View {
       const known = windows.filter((w) => w.used != null);
       const top = known.reduce((m, w) => Math.max(m, w.used), 0);
       const tip = [
-        most ? `★ ${MOST_LEFT_TIP}` : null,
+        star,
         `${a.name}${a.login || a.email ? ` · ${a.login || a.email}` : ""}${a.plan ? ` (${a.plan})` : ""}`,
         a.warning ? `⚠ ${a.warning}` : null,
         a.credits ? `Credits: ${a.credits.unlimited ? "unlimited" : a.credits.balance != null ? Math.round(a.credits.balance).toLocaleString() : "none"}` : null,
         a.resets?.count ? `Reset passes: ${a.resets.count}${a.resets.expires ? ` (first expires ${until(a.resets.expires, now)})` : ""}` : null,
-        ...[...windows, ...all.filter((w) => !windows.includes(w))].map((w) => w.used == null
-          ? `${w.label}: unknown (reset since the last reading, ${w.was}%)`
-          : `${w.label}: ${w.used}%${w.resets ? ` · resets ${until(w.resets, now)}` : ""}`),
+        ...[...windows, ...all.filter((w) => !windows.includes(w))].map((w) => line(w, at)),
         a.error ? `Couldn't read: ${a.error}` : null,
         a.checked ? `Checked: ${ago(a.checked, now)}${a.stale ? " (old value)" : ""}` : null,
         "Click: refresh",
@@ -182,14 +225,14 @@ export default class UsageGauge extends View {
           .when(Boolean(props()?.font), (el) => el.font_family(props().font))
           .text_size(props()?.size ?? 10.5)
           .child(h_flex().min_w(0).gap(2).items_center()
-            .when(most, (el) => el.child(div().id(`ug-most-${a.agent}-${a.name}`).flex_none().text_color(t.accent).tooltip(MOST_LEFT_TIP).child("★")))
+            .when(most, (el) => el.child(div().id(`ug-most-${a.agent}-${a.name}`).flex_none().text_color(t.accent).tooltip(star ?? "").child("★")))
             .child(div().min_w(0).truncate().text_color(a.warning ? t.working : a.stale ? t.dim : t.muted).child(a.warning ? `${a.name}!` : a.name)))
           .child(a.login_needed
             ? div().font_medium().text_color(t.working).child("login")
             : div().font_medium().text_color(known.length ? (a.stale ? t.dim : level(top)) : t.dim).child(known.length ? `${top}%` : a.retry_at ? "wait" : "—")))
-        .when(!money, (el) => el.children(windows.slice(0, 2).map((w) => bar(w, width - 12 - (most ? 2 : 0)))))
+        .when(!money, (el) => el.children(windows.slice(0, 2).map((w) => bar(w, at))))
         .when(Boolean(money), (el) => el.child(h_flex().gap(5).items_center()
-          .child(div().flex_1().min_w(0).children(windows.slice(0, 1).map((w) => bar(w, 44))))
+          .child(div().flex_1().min_w(0).children(windows.slice(0, 1).map((w) => bar(w, at))))
           .child(div().flex_none().when(Boolean(props()?.font), (el) => el.font_family(props().font)).text_size(props()?.size ?? 9.5).text_color(a.stale ? t.dim : t.muted).child(money))));
     };
 

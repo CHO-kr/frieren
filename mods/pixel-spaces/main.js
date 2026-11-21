@@ -13,10 +13,16 @@ import { fitHeight, plan, H } from "./fit.js";
 
 // One place per space. Pin one in journey-spaces/places.json like {"space name": "camp"};
 // otherwise the name picks a fixed place (reordering spaces doesn't change it).
-const PLACES = { capital: "Royal Capital", ruins: "Old Ruins", meadow: "Flower Hill", camp: "Forest Camp", tower: "Rampart Watchtower", street: "Town Street", tree: "Starlit Old Tree", moon: "Moonlit Castle" };
-const PLACE_IDS = Object.keys(PLACES);
+const PLACES = { capital: "Royal Capital", ruins: "Old Ruins", meadow: "Flower Hill", camp: "Forest Camp", tower: "Rampart Watchtower", street: "Town Street", tree: "Starlit Old Tree", moon: "Moonlit Castle", map: "World Map" };
+// The places a name can pick (the world map isn't one: adding a place here would move every space's).
+const PLACE_IDS = ["capital", "ruins", "meadow", "camp", "tower", "street", "tree", "moon"];
 const PLACES_FILE = `${appHome()}/mods/journey-spaces/places.json`;
-const placeOf = (name, places) => (PLACE_IDS.includes(places[name]) ? places[name] : PLACE_IDS[[...name].reduce((n, c) => n + c.codePointAt(0), 0) % PLACE_IDS.length]);
+// The space that lists every space's sessions in one (spaces.json "all", which herdr-sessions shares
+// in "sessions.spaces") is the world map, and no destination of its own: the header holds it, and the
+// folded rail puts it first.
+const allName = () => shared("sessions.spaces")?.all ?? null;
+const placeOf = (name, places) => (name === allName() ? "map"
+  : PLACE_IDS.includes(places[name]) ? places[name] : PLACE_IDS[[...name].reduce((n, c) => n + c.codePointAt(0), 0) % PLACE_IDS.length]);
 const placeFor = (name, places) => `mods/pixel-spaces/art/${placeOf(name, places)}.png`;
 const ICON = (n) => `mods/pixel-chrome/icons/${n}.svg`;
 // Theme colors follow the background scene (pixel-chrome writes them into the layout); this adds an alpha.
@@ -249,7 +255,8 @@ export default class Spaces extends View {
     const sp = spaces(), ps = panes();
     const ready = (w) => this.shown.has(w.id) || where(w, ps) in this.git || Date.now() - (this.born[w.id] ??= Date.now()) > 1500;
     for (const w of sp) if (!this.shown.has(w.id) && ready(w)) this.shown.add(w.id);
-    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, sum: this.sum(w, ps) })).filter((r) => this.shown.has(r.w.id));
+    const every = allName();
+    const list = sp.map((w, i) => ({ w, i, g: this.git[where(w, ps)] ?? null, sum: this.sum(w, ps) })).filter((r) => this.shown.has(r.w.id) && r.w.name !== every);
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
@@ -477,6 +484,33 @@ export default class Spaces extends View {
         .bg(tone(t, w.status)).border(1).border_color(alpha(t.background, ""))));
   }
 
+  // The all-space in the header: the world map and its name, framed in gold while it's the shown one.
+  // w null: the space is closed (closing a space's last tab closes it; this one has a single tab), so the
+  // chip stays, dimmed, and a click makes the space again (2026-11-20: it vanished that way once).
+  allChip(w, t) {
+    const name = w?.name ?? allName();
+    const on = Boolean(w?.active);
+    return h_flex()
+      .id(w ? `space-${w.id}` : "space-all-closed")
+      .h(22)
+      .flex_none()
+      .px(4)
+      .gap(5)
+      .items_center()
+      .border(1)
+      .border_color(on ? t.accent : alpha(t.border, w ? "80" : "40"))
+      .when(on, (el) => el.bg(alpha(t.accent, "14")))
+      .hover((s) => s.border_color(t.accent))
+      .tooltip(w
+        ? `${name} · ${PLACES.map}\nEvery space's sessions in one list, in the session panels below`
+        : `${name} · ${PLACES.map} (closed)\nClick to open it again: every space's sessions in one list`)
+      .on_click(() => (w ? run("space.select", { id: w.id }) : run("space.new", { name })))
+      .when(Boolean(w), (el) => el.on_mouse_down("right", () => this.menu(w)))
+      .child(image(placeFor(name, this.places)).size(16))
+      .child(div().text_size(11).text_color(on ? t.accent : w ? t.muted : t.dim).child(name))
+      .when(w?.status === "working" || w?.status === "blocked" || w?.status === "done", (el) => el.child(div().size(6).flex_none().bg(tone(t, w.status))));
+  }
+
   render() {
     const t = theme();
     const collapsed = narrow();
@@ -492,14 +526,17 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
-    const single = sp.length === 1;
-    const items = this.grouped(t, collapsed, single);
-    this.fit(items, sp.length);
+    const every = sp.find((w) => w.name === allName()) ?? null;
+    const real = every ? sp.filter((w) => w !== every) : sp;
+    const single = real.length === 1;
+    const items = [...(collapsed && every ? [{ el: this.compact({ w: every, tree: null }, t), h: 40 }] : []), ...this.grouped(t, collapsed, single)];
+    this.fit(items, real.length);
     return v_flex().size_full().min_h(0).text_size(12)
       .child(h_flex().h(28).flex_none().pl(10).pr(6).gap(6).items_center().border_b(2).border_color(alpha(t.border, "60"))
         .when(!collapsed, el => el.child(svg(ICON("chevron-right")).size(12).text_color(t.accent)).child(div().text_color(t.accent).child("SPACES"))
           .child(div().font_family("Galmuri9").text_size(10).text_color(t.muted).child("DESTINATIONS")))
         .child(div().flex_1())
+        .when(!collapsed && Boolean(allName()), (el) => el.child(this.allChip(every, t)))
         .child(div().id("space-new").size(24).flex_none().flex().items_center().justify_center().text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.accent))
           .tooltip("New space").on_click(() => run("space.new")).child(svg(ICON("plus")).size(12))))
       // One space: no scrolling, the row in the middle of whatever room the block has (its layout min may leave some).

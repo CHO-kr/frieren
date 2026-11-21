@@ -1,6 +1,6 @@
 // node accounts.test.mjs: checks accounts.js with knownAgents() / shared state shaped like this PC's.
 import assert from "node:assert/strict";
-import { agentRows, runFor } from "./accounts.js";
+import { agentRows, runFor, MOST_LEFT } from "./accounts.js";
 
 let failures = 0;
 const test = (name, fn) => {
@@ -47,6 +47,28 @@ test("the account with the most left comes first, noted", () => {
   assert.deepEqual(rows[0].run, ["claude3"]);
   assert.deepEqual(rows[4].run, ["codex", "--no-daemon"]);
   assert.equal(rows.at(-1).installed, false);
+});
+
+test("usage-gauge's ranking orders every account, the ★ one first with its note and reason", () => {
+  const best = {
+    claude: { name: "claude2", used: 70, why: "claude2: 30% left resets in 3h — spend it first", tag: "spend first", order: ["claude2", "claude3"] },
+    codex: { name: "codex3", used: 0, why: "codex3: most left (100%)", tag: "most left", order: ["codex3", "codex2", "codex"] },
+  };
+  const rows = agentRows(agents, accounts, best);
+  // claude isn't ranked (no fresh numbers): after the ranked ones.
+  assert.deepEqual(rows.map((r) => r.key), ["claude:claude2", "claude:claude3", "claude:claude", "codex:codex3", "codex:codex2", "codex:codex", "grok", "pi"]);
+  assert.deepEqual(rows.filter((r) => r.most).map((r) => [r.name, r.note, r.why]), [
+    ["claude2", "spend first", "claude2: 30% left resets in 3h — spend it first"],
+    ["codex3", "most left", "codex3: most left (100%)"],
+  ]);
+  assert.equal(rows[1].note, null);
+  assert.equal(rows[1].why, null);
+});
+
+test("an order that disagrees with the name, or names unknown accounts, still puts the ★ one first", () => {
+  const rows = agentRows(agents, accounts, { claude: { name: "claude3", order: ["claude9", "claude2", "claude3", "claude2"] }, codex: { name: "codex2", order: "nope" } });
+  assert.deepEqual(rows.slice(0, 6).map((r) => r.name), ["claude3", "claude2", "claude", "codex2", "codex", "codex3"]);
+  assert.equal(rows[0].note, MOST_LEFT);
 });
 
 test("no usage data: accounts in their own order, nothing noted", () => {

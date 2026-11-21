@@ -697,9 +697,22 @@ the night scene's lightness for each role, so contrast is the same in all seven.
 over the background. The mods take colors from `theme()` and derive the rest with `alpha(c, a)` and
 `mix(a, b, k)` (in `lib.js`), so nothing is hard-coded to night.
 
+**Real outcomes** (`pixel-chronicle`, a 0px block in the top bar): every 2 s, `chronicle.py` gets the
+agent terminals, maps each to its session through `herdr-made.json` (seen < 120 s; Codex: the thread's
+`rollout_path` in `state_5.sqlite`) and reads only what the transcript gained. It shares
+`pixel.deeds` (per terminal: `context {used, full, pct}`, `question`, `hit`, `streak`, `wounds`,
+`tests`, `loot`) and `pixel.loot`, and appends to `journal.jsonl`. Context `full`: Claude's
+`modelSettings.<model>.autoCompactWindow`, else 1M for `[1m]` / 1M models, else 200k; Codex's
+`model_context_window`. A failed search (`rg`, `Test-Path`, …) is a miss, not a hit. The party adds MEM,
+INN, `Asks you` and an outcome chip; `plan()` takes `wounds / streak / tests / asks / lootName` per member
+(the monster targets the wounded, streak ≥ 3 = RAGE from wave 1, mode `question`). `pixel-help` is a
+dialog (`props.terminal` optional) that parses the waiting prompt, re-reads before sending, and sends
+the digit (or Codex letter) and, if the screen still shows it, arrows and Enter. The session lists are
+one `stack` (`sessions`) with `pixel-session-tabs` as its header.
+
 ## Done when (Frieren Pixel)
 
-- `herdr-app check` passes for the six `pixel-*` folders, `node --test` passes for `names.test.mjs`,
+- `herdr-app check` passes for the nine `pixel-*` folders, `chronicle_test.py` passes, `node --test` passes for `names.test.mjs`,
   `roomiest.test.mjs`, `fit.test.mjs` and `accounts.test.mjs`, and `layout.switch {name: "frieren-pixel"}`
   shows the pixel scene through 55%-opaque terminals, Galmuri text everywhere, and 2px cream frames.
 - An agent running `npm test` shows `Testing` on its card and `… unleashes a combo!  npm test` in the

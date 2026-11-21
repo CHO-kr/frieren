@@ -92,9 +92,10 @@ def claude_usage(name, folder, profile):
             seconds = int(e.headers.get("retry-after") or 600)
             raise Wait(f"Usage reads for this account are rate-limited. Reading again in {round(seconds / 60)} min.", seconds)
         raise RuntimeError({401: "Login expired. Open Claude Code once with this account to renew it."}.get(e.code, f"HTTP {e.code}"))
-    windows = [("5h", data.get("five_hour")), ("weekly", data.get("seven_day"))]
-    out["windows"] = [{"label": label, "used": round(w["utilization"]), "resets": ms(w.get("resets_at"))}
-                      for label, w in windows if w and w.get("utilization") is not None]
+    # minutes: the window's length, for the pace tick (how much of its time has gone).
+    windows = [("5h", data.get("five_hour"), 5 * 60), ("weekly", data.get("seven_day"), 7 * 24 * 60)]
+    out["windows"] = [{"label": label, "used": round(w["utilization"]), "resets": ms(w.get("resets_at")), "minutes": minutes}
+                      for label, w, minutes in windows if w and w.get("utilization") is not None]
     return out
 
 
@@ -177,7 +178,8 @@ def codex_usage(name, home):
     passes = [c for c in ((result.get("rateLimitResetCredits") or {}).get("credits") or []) if c.get("status") == "available"]
     out["resets"] = {"count": (result.get("rateLimitResetCredits") or {}).get("availableCount", len(passes)),
                      "expires": min((ms(c["expiresAt"]) for c in passes if c.get("expiresAt")), default=None)}
-    out["windows"] = [{"label": span(w.get("windowDurationMins")), "used": w.get("usedPercent"), "resets": ms(w.get("resetsAt"))} for w in found]
+    out["windows"] = [{"label": span(w.get("windowDurationMins")), "used": w.get("usedPercent"), "resets": ms(w.get("resetsAt")),
+                       "minutes": w.get("windowDurationMins")} for w in found]
     return out
 
 

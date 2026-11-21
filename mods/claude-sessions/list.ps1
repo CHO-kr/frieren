@@ -85,7 +85,9 @@ foreach ($l in $links) {
   $c = $l['claude']
   if (-not $c -or -not $c['session']) { continue }
   $sid = [string]$c['session']
-  $pair = New-Object 'System.Collections.Generic.Dictionary[string,object]'
+  # ::new, not New-Object: New-Object's result is PowerShell-wrapped, and stored through an index
+  # (['link'] = $pair) it stays wrapped, so Serialize fails on it (2026-11-20, a Codex → Claude move).
+  $pair = [System.Collections.Generic.Dictionary[string,object]]::new()
   $pair['thread'] = [string]$l['codex']['thread']; $pair['title'] = [string]$l['title']
   if ($known.ContainsKey($sid)) { $known[$sid]['link'] = $pair; continue }
   $path = $null

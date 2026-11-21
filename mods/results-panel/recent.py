@@ -1,8 +1,13 @@
 # Recent result files under a folder for the results-panel mod, newest first, as JSON.
 #   python -X utf8 recent.py <folder> [limit]      the list (images get thumbnails, videos posters)
+#   python -X utf8 recent.py --files <file> ...    the same row facts for these files, in the given
+#                                                  order; missing ones, folders and relative paths are
+#                                                  left out ("dir" is the file's whole folder here)
 #   python -X utf8 recent.py --preview <file>      a screen-sized copy of an image to show large
 # Pictures are shown from the app's own folder (gpui's image() resolves there), so thumbnails,
 # posters and previews are small copies in ~/.config/herdr-app/.thumbs (hidden: no mod reload).
+# Each is written under a temporary name and moved into place, so two runs making the same
+# picture at once never show a half-written file.
 import hashlib
 import heapq
 import json
@@ -37,6 +42,22 @@ def relative(path):
     return os.path.relpath(path, APP).replace("\\", "/")
 
 
+def temporary(out):
+    """Where `out` is written first: same folder and extension, a name of this run's own."""
+    return os.path.join(THUMBS, f"tmp-{os.getpid()}-{os.path.basename(out)}")
+
+
+def settle(tmp, out):
+    """Moves a finished picture into place (another run may have made the same one meanwhile)."""
+    try:
+        os.replace(tmp, out)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
 def picture(path, size):
     """A copy at most `size` px wide/high, made once (SVG is copied as is)."""
     os.makedirs(THUMBS, exist_ok=True)
@@ -44,16 +65,20 @@ def picture(path, size):
     if ext == "svg":
         out = cached(path, "svg", "svg")
         if not os.path.exists(out):
-            shutil.copyfile(path, out)
+            tmp = temporary(out)
+            shutil.copyfile(path, tmp)
+            settle(tmp, out)
         return relative(out)
     out = cached(path, size, "png" if ext in ("png", "gif", "webp") else "jpg")
     if not os.path.exists(out):
         from PIL import Image
+        tmp = temporary(out)
         with Image.open(path) as im:
             im.thumbnail((size, size))
             if out.endswith(".jpg") and im.mode not in ("RGB", "L"):
                 im = im.convert("RGB")
-            im.save(out, quality=85)
+            im.save(tmp, "JPEG" if out.endswith(".jpg") else "PNG", quality=85)
+        settle(tmp, out)
     return relative(out)
 
 
@@ -62,8 +87,11 @@ def poster(path):
     os.makedirs(THUMBS, exist_ok=True)
     out = cached(path, "poster", "jpg")
     if not os.path.exists(out):
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1", "-i", path, "-frames:v", "1", "-vf", "scale=320:-2", out],
+        tmp = temporary(out)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", "1", "-i", path, "-frames:v", "1", "-vf", "scale=320:-2", tmp],
                        timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
+        if os.path.exists(tmp):
+            settle(tmp, out)
     return relative(out) if os.path.exists(out) else None
 
 
@@ -138,12 +166,28 @@ def scan(folder, limit):
     return files, seen, truncated
 
 
-if __name__ == "__main__":
-    if sys.argv[1] == "--preview":
-        sys.stdout.write(json.dumps({"image": picture(sys.argv[2], 1800)}))
-        sys.exit()
-    folder, limit = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 80
-    files, seen, truncated = scan(folder, limit)
+def explicit(paths):
+    """Row facts for named files (an agent's loot), in the given order. A kind this script doesn't
+    know is "other"; the panel may take the caller's own word for it."""
+    files = []
+    for path in paths:
+        if not os.path.isabs(path):
+            continue
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        if not os.path.isfile(path):
+            continue
+        name = os.path.basename(path)
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        files.append({"path": path, "name": name, "dir": os.path.dirname(path), "kind": KIND.get(ext, "other"),
+                      "ext": ext, "size": st.st_size, "mtime": int(st.st_mtime * 1000)})
+    return files
+
+
+def thumbnails(files):
+    """Small pictures for the first 40 images and posters for the first 10 videos."""
     images = videos = 0
     for f in files:
         try:
@@ -153,5 +197,19 @@ if __name__ == "__main__":
                 f["thumb"], videos = poster(f["path"]), videos + 1
         except Exception:
             f["thumb"] = None
+
+
+if __name__ == "__main__":
+    if sys.argv[1] == "--preview":
+        sys.stdout.write(json.dumps({"image": picture(sys.argv[2], 1800)}))
+        sys.exit()
+    if sys.argv[1] == "--files":
+        files = explicit(sys.argv[2:])
+        thumbnails(files)
+        sys.stdout.write(json.dumps({"files": files}, ensure_ascii=False))
+        sys.exit()
+    folder, limit = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 80
+    files, seen, truncated = scan(folder, limit)
+    thumbnails(files)
     prune()
     sys.stdout.write(json.dumps({"folder": folder, "scanned": seen, "truncated": truncated, "files": files}, ensure_ascii=False))

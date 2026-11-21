@@ -44,6 +44,12 @@ function shownSpace() {
   const shown = spaces().find((p) => p.active);
   return shown && sortedSpaces().some((s) => s.name === shown.name) ? shown : null;
 }
+// The space spaces.json names "all" (it sorts nothing), when it is the shown one: the list then has
+// every space's sessions in one, each row naming its space, the unsorted ones folded at the bottom.
+function everySpace() {
+  const name = shared(SPACES)?.all;
+  return name ? spaces().find((p) => p.active && p.name === name) ?? null : null;
+}
 // In the session's space when it has one (made if it was closed), else in the shown one.
 function openTab(tab, key) {
   const name = key ? spaceOf(key) : null;
@@ -116,6 +122,9 @@ function savedFilter() {
 const HIDDEN = "sessions.hidden.herdr";
 const HIDDEN_GROUP = "Hidden";
 const ICON = { claude: "icons/claude.svg", codex: "icons/codex.svg" };
+// For the tab strip over the session panels (pixel-session-tabs): the terminals of this list's
+// sessions open in a Herdr tab, and how many sessions it lists (hidden ones left out).
+const OPEN = "sessions.open.herdr";
 
 // Any Claude account resumes a transcript by its path and writes on there. The main account is
 // the Claude desktop app's login, so it resumes with Remote Control and shows in the app's list
@@ -173,7 +182,8 @@ export default class HerdrSessions extends View {
       for (;;) {
         const command = await nextCommand();
         const req = shared(REQUEST);
-        if (!String(command).endsWith("request") || !req) continue;
+        // A pick waits for the list (the tab strip hands it on again).
+        if (!String(command).endsWith("request") || !req || !this.sessions) continue;
         setShared(REQUEST, null);
         const s = (this.sessions ?? []).find((x) => x.key === req.id);
         if (s) req.what === "menu" ? this.menu(s) : this.open(s);
@@ -193,6 +203,8 @@ export default class HerdrSessions extends View {
         this.sessions = data.sessions;
         this.accounts = data.accounts ?? this.accounts;
         this.error = null;
+        const all = terminals();
+        this.shareOpen((s) => this.liveTerminal(s, all));
       } catch (e) {
         this.error = String(e?.message ?? e);
       }
@@ -212,13 +224,22 @@ export default class HerdrSessions extends View {
         const r = await exec("python", ["-X", "utf8", `${appHome()}/mods/herdr-sessions/spaces.py`], { timeout: 180000 });
         if (r.code === 0) {
           const data = JSON.parse(r.stdout);
-          const next = { spaces: data.spaces, map: data.map };
+          const next = { spaces: data.spaces, map: data.map, ...(data.all ? { all: data.all } : {}) };
           if (JSON.stringify(shared(SPACES)) !== JSON.stringify(next)) setShared(SPACES, next);
         }
       } catch {}
       this.sorting = false;
       cx.notify();
     });
+  }
+
+  // Shares OPEN when it changed; `term` gives a session's live terminal.
+  shareOpen(term) {
+    if (!this.sessions) return;
+    const hiddenKeys = new Set(shared(HIDDEN) ?? []);
+    const kept = this.sessions.filter((s) => !hiddenKeys.has(s.key));
+    const next = { terminals: [...new Set(kept.map((s) => term(s)?.address).filter(Boolean))].sort(), listed: kept.length };
+    if (JSON.stringify(shared(OPEN)) !== JSON.stringify(next)) setShared(OPEN, next);
   }
 
   fold(label) {
@@ -312,15 +333,18 @@ export default class HerdrSessions extends View {
     const filter = KINDS.find((f) => f.id === this.filter) ?? KINDS[0];
     // The shown space's sessions, and the ones open in its tabs; unsorted ones fold at the bottom.
     const shownSorted = shownSpace();
-    const here = this.scope === "all" ? null : shownSorted;
+    const every = everySpace();
+    const here = this.scope === "all" || every ? null : shownSorted;
     const term = once((s) => this.liveTerminal(s, all));
+    this.shareOpen(term);
     const spaceIn = spaceLookup();
-    const inHere = once((s) => !here || spaceIn(s.key) === here.name || term(s)?.labels?.["herdr.space"] === here.id);
-    const loose = (s) => Boolean(here) && !inHere(s) && !spaceIn(s.key);
+    // The all-space has what any space lists: sorted into one, or open in a Herdr tab.
+    const inHere = once((s) => (every ? Boolean(spaceIn(s.key) || term(s)) : !here || spaceIn(s.key) === here.name || term(s)?.labels?.["herdr.space"] === here.id));
+    const loose = (s) => Boolean(here || every) && !inHere(s) && !spaceIn(s.key);
     const listed = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key) && inHere(s));
     const list = listed.filter(filter.keep);
     const unsorted = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key) && loose(s) && filter.keep(s));
-    const hidden = (this.sessions ?? []).filter((s) => hiddenKeys.has(s.key) && inHere(s) && filter.keep(s));
+    const hidden = (this.sessions ?? []).filter((s) => hiddenKeys.has(s.key) && (every || inHere(s)) && filter.keep(s));
 
     const row = (s) => {
       const k = term(s);
@@ -328,6 +352,7 @@ export default class HerdrSessions extends View {
       const off = !k && (!s.folder || (s.kind === "claude" && !s.path));
       const tip = [
         s.cwd,
+        every ? `Space: ${spaceIn(s.key) ?? "not sorted"}` : null,
         `${s.kind === "claude" ? "Claude" : "Codex"} · ${s.account}${s.opened_with && s.opened_with !== s.account ? ` (last opened with ${s.opened_with})` : ""}`,
         k ? `Open in a Herdr tab: ${s.where || k.address}` : s.where ? `Was in: ${s.where}` : null,
         "Right-click: another account, a copy, or hide",
@@ -364,7 +389,9 @@ export default class HerdrSessions extends View {
         .child(dot(t, a?.status))
         .child(image(ICON[s.kind]).w(12).h(12).flex_none())
         .child(div().flex_1().min_w(0).truncate().text_color(off ? t.dim : t.foreground).child(s.title || "(untitled)"))
-        .child(div().flex_none().px(5).h(16).rounded(4).bg(t.raised).text_size(10).text_color(t.dim).flex().items_center().child(s.account))
+        // In the all-space the chip names the session's space (the account stays in the tooltip).
+        .when(!every, (el) => el.child(div().flex_none().px(5).h(16).rounded(4).bg(t.raised).text_size(10).text_color(t.dim).flex().items_center().child(s.account)))
+        .when(Boolean(every && spaceIn(s.key)), (el) => el.child(div().flex_none().max_w(52).truncate().text_size(10).text_color(t.muted).child(spaceIn(s.key))))
         .child(div().flex_none().text_size(11).text_color(t.dim).child(ago(now - (s.last ?? 0)))));
     };
 
@@ -460,14 +487,16 @@ export default class HerdrSessions extends View {
         .bg(t.raised)
         .text_size(10.5)
         .font_medium()
-        .text_color(on ? t.foreground : t.dim)
-        .cursor_pointer()
-        .hover((el) => el.text_color(t.foreground))
-        .tooltip(on ? `Sessions sorted into ${shownSorted.name}, and any open in its tabs\nClick: every space` : `Every space's sessions\nClick: only ${shownSorted.name}'s`)
-        .on_click((_e, cx) => {
-          this.setScope(on ? "all" : "space");
-          cx.notify();
-        })
+        .text_color(on || every ? t.foreground : t.dim)
+        .when(Boolean(every), (el) => el.tooltip(`${every.name}: every space's sessions in one list, each row naming its space\nNot sorted ones fold at the bottom`))
+        .when(!every, (el) => el
+          .cursor_pointer()
+          .hover((el) => el.text_color(t.foreground))
+          .tooltip(on ? `Sessions sorted into ${shownSorted.name}, and any open in its tabs\nClick: every space` : `Every space's sessions\nClick: only ${shownSorted.name}'s`)
+          .on_click((_e, cx) => {
+            this.setScope(on ? "all" : "space");
+            cx.notify();
+          }))
         .child(on ? shownSorted.name : "All spaces");
     };
 
@@ -495,7 +524,7 @@ export default class HerdrSessions extends View {
           .items_center()
           .justify_between()
           .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_medium().text_color(t.dim).child("Herdr sessions"))
-          .when(Boolean(shownSorted), (el) => el.child(scopeChip()))
+          .when(Boolean(shownSorted || every), (el) => el.child(scopeChip()))
           .child(div()
             .id("hs-search")
             .mr(10)

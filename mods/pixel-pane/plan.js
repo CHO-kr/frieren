@@ -192,8 +192,10 @@ function battle(members, sceneId, W, seed) {
     bodies.push(b.actor);
     return b;
   };
+  // wounds / streak / hit / tests: what the member's agent really did lately (pixel-chronicle), see plan() below
   const party = members.map((m, i) => makeBody(m.ch, start + i * gap,
-    { st: m.st, anim: m.anim, own: m.own, key: m.key, kinds: m.kinds ?? [m.anim] }));
+    { st: m.st, anim: m.anim, own: m.own, key: m.key, kinds: m.kinds ?? [m.anim], wounds: m.wounds ?? 0, streak: m.streak ?? 0,
+      hit: m.hit ?? null, tests: m.tests ?? null }));
   const allyBodies = allies.map((a, i) => makeBody(a.ch, start + (members.length + i) * gap,
     { st: "working", anim: "think", ally: true, by: party[members.indexOf(a.by)], stays: [] }));
   allyBodies.forEach((b) => { b.present = (t) => b.stays.some(([a, z]) => t >= a && t < z); });
@@ -930,13 +932,24 @@ function battle(members, sceneId, W, seed) {
     return Math.max(end, ti + 5) - t;
   };
   let monTurns = 0, rage = false;
+  // a member whose agent failed 3 times in a row enrages the monsters from the first wave
+  const furious = party.filter((b) => b.streak >= 3).sort((a, b) => b.streak - a.streak)[0] ?? null;
+  const shortly = (s) => (String(s ?? "").length > 40 ? `${String(s).slice(0, 39)}…` : String(s ?? ""));
   const monsterTurn = (t, boss) => {
     const pool = targetsAt(t);
+    // every other turn the monster goes for a member whose commands really failed lately: it can't block or dodge
+    const wounded = pool.filter((b) => b.wounds > 0 && !b.ally);
+    if (wounded.length && monTurns % 2 === 0) {
+      const target = wounded[monTurns++ % wounded.length];
+      const len = strike(target, t, "hurt");
+      say(t + len - 1, `${target.ch.name} is wounded: ${target.hit?.what === "edit" ? "an edit failed" : "a command failed"} (${shortly(target.hit?.detail)})`);
+      return len;
+    }
     const target = pool[(turnNo + hash(foe) + monTurns) % pool.length];
     const kinds = boss ? ["blast", "charge", "shot", "blast"] : ["shot", "charge", "shot", "blast"];
     const kind = kinds[monTurns++ % kinds.length];
     let len = kind === "blast" && pool.length > 1 ? blastAll(t) : kind === "charge" ? chargeAt(pool.reduce((a, o) => (o.head > a.head ? o : a), pool[0]), t) : strike(target, t);
-    if (boss && rage) len += 1 + strike(pool[(turnNo + 1) % pool.length], t + len + 1);
+    if ((boss || furious) && rage) len += 1 + strike(pool[(turnNo + 1) % pool.length], t + len + 1);
     return len;
   };
 
@@ -958,6 +971,31 @@ function battle(members, sceneId, W, seed) {
     titles.push([t, `BATTLE · ${W_.boss ? "Boss" : `Wave ${w + 1}/3`} · vs ${foe}`]);
     say(t, W_.boss ? `The boss appears: the ${foe}!` : `Wave ${w + 1}: a ${foe} appears!`);
     t += 5;
+    if (w === 0) {
+      // what really happened lately opens the fight: test runs (ALL CLEAR / WOUNDED) and a streak of failures (RAGE)
+      for (const b of party) {
+        if (!b.tests) continue;
+        if (b.tests.ok) {
+          word(t, "COMBO!", b.head - 12, overHead(b), [0, 0, 1, 1, 1, 1, 1]);
+          say(t, `ALL CLEAR! ${b.ch.name}'s tests passed${b.tests.passed ? ` (${b.tests.passed})` : ""}`);
+          titles.push([t, `ALL CLEAR · ${b.ch.name}'s tests passed`]);
+        } else {
+          pose(b, t, [B("hurt", 0), B("hurt", 1), B("hurt", 1), B("hurt", 0)]);
+          num(t, b.tests.failed || 1, "hurt", b.head - 4, Y0 + 2, [0, 1, 2, 2, 2]);
+          say(t, `WOUNDED! ${b.ch.name}'s tests failed${b.tests.failed ? ` (${b.tests.failed} failed)` : ""}`);
+          titles.push([t, `WOUNDED · ${b.ch.name}'s tests failed`]);
+        }
+        t += 7;
+      }
+      if (furious) {
+        rage = true;
+        banner(t, "RAGE!", 10);
+        for (let s = t; s < t + 4; s++) monSet(s, S(M.hurt[s % 2]));
+        say(t, `The ${foe} is enraged: ${furious.ch.name} failed ${furious.streak} times in a row`);
+        titles.push([t, `RAGE · ${furious.ch.name} failed ${furious.streak} times in a row`]);
+        t += 6;
+      }
+    }
     const turns = W_.boss ? Math.max(7, 3 * acting.length) : Math.max(5, 2 * acting.length);
     let since = 0;
     for (let k = 0; k < turns; k++) {
@@ -1123,8 +1161,25 @@ function still(members, sceneId, W, night, mode, pick) {
   const wake = (m, a) => (m.st === "blocked" ? "alert" : a);
   let kind, line;
 
+  if (mode === "question") {
+    // a member's last turn ended with a question to the person: it waits by the signpost with a "?" over its head
+    prop("signpost", Math.max(0, W - 60));
+    members.forEach((m, i) => {
+      const head = start + i * 28;
+      if (i === ownAt) ring(head);
+      body(m, head, wake(m, "stand"));
+      if (m.asks) items.push({ key: `q${i}`, text: true, family: "Galmuri11", color: "#ffd35a", size: 13, x: head + 1, y: Y0 - 3, w: 10, frames: ["?", "?", "?", " "], ms: 380 });
+    });
+    const a = members.find((m) => m.asks) ?? members[0];
+    line = [`${a.ch.name} asks you: ${a.q ?? "an answer"}`, names];
+    return { mode, activity: "question", monster: null, foe: null, L: 1, items, log: [[line[0]], [line[1]]], cast: members.map((m) => m.ch.name) };
+  }
+
   if (mode === "victory") {
     kind = VICTORY[pick % VICTORY.length];
+    // the loot a done member really made (pixel-chronicle) is what's in the chest
+    const looter = members.find((m) => m.lootName);
+    const loot = looter ? `Loot: ${looter.lootName}${looter.lootCount > 1 ? ` (+${looter.lootCount - 1})` : ""}` : null;
     const chestX = W - 60;
     if (kind === "mimic") {
       const Mm = STAGE.monsters.mimic;
@@ -1148,7 +1203,7 @@ function still(members, sceneId, W, night, mode, pick) {
         if (i === ownAt) ring(head);
         body(m, head, m.st === "done" ? "victory" : wake(m, "stand"));
       });
-      line = kind === "grimoire" ? [`A rare grimoire! ${lead} is overjoyed`, names] : ["Quest complete! A treasure chest", names];
+      line = loot ? [`Quest complete! ${loot}`, names] : kind === "grimoire" ? [`A rare grimoire! ${lead} is overjoyed`, names] : ["Quest complete! A treasure chest", names];
     }
     return { mode, activity: kind, monster: null, foe: null, L: 1, items, log: [[line[0]], [line[1]]], cast: members.map((m) => m.ch.name) };
   }
@@ -1237,11 +1292,17 @@ function still(members, sceneId, W, night, mode, pick) {
 // members: [{ ch, st, anim, own, key, summons, kinds }] (the shown tab's panes, MAX_PARTY at most; kinds: the kinds of
 // work the member did lately, oldest first, its turns go through them); W: the stage's width in art pixels;
 // pick: which pastime / victory scene (e.g. hash(tab) + the 20-minute slot), and which battle
-// -> { mode, activity, monster, foe, L, items: [{ key, family, x, y, w, frames, ms }], log: [newest[], before[]],
-//      title?: [per step], cast }
+// What the member's agent really did lately (pixel-chronicle's deeds), all optional:
+//   wounds: commands / edits that failed in the last 5 minutes (the monster goes for it: no block, no dodge)
+//   streak: failures in a row (3+: the monsters rage from the first wave);  hit: { what, detail } the latest failure
+//   tests: { ok, passed?, failed? } a test run in the last 10 minutes (opens the fight: ALL CLEAR / WOUNDED)
+//   asks, q: its last turn ended with a question q (no battle: mode "question", a "?" over its head)
+//   lootName, lootCount: files it made in the last 30 minutes (what the victory chest holds)
+// -> { mode, activity, monster, foe, L, items: [{ key, family, x, y, w, frames, ms, text?, color?, size? }],
+//      log: [newest[], before[]], title?: [per step], cast }   (text items: plain characters in a ui font, color, size)
 export function plan(members, sceneId, night, W = STAGE.stripWidth, pick = 0) {
   const st = members.map((m) => m.st);
-  const mode = st.includes("working") ? "battle" : st.includes("done") ? "victory" : "camp";
+  const mode = st.includes("working") ? "battle" : members.some((m) => m.asks) ? "question" : st.includes("done") ? "victory" : "camp";
   if (mode !== "battle") return still(members, sceneId, W, night, mode, pick);
   const seed = hash(`${sceneId}|${pick}|${members.map((m) => `${m.ch.id}:${(m.kinds ?? [m.anim]).join("+")}:${m.st}`).join(",")}`);
   return battle(members, sceneId, W, seed);

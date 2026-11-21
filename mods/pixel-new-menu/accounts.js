@@ -1,9 +1,11 @@
 // The + menu's agent rows (pure, tested by `node accounts.test.mjs`). Claude Code and Codex become one row per account
 // when there is more than one: the session panels share their accounts ("sessions.claude" / "sessions.codex":
-// [{ name, cmd, main }]), usage-gauge shares the one with the most left ("usage.roomiest": { claude, codex }: { name } | null).
-// That account comes first and says "most left"; the others keep their order. Other agents stay one row each.
-// A row: { key, name, icon, tint, installed, run, tab, account, most }. `tab` names the tab it opens (the agent's name,
-// as the shipped menu does).
+// [{ name, cmd, main }]), usage-gauge shares the one to start new work on, the one with the ★ ("usage.roomiest":
+// { claude, codex }: { name, tag?, why?, order? } | null; usage-gauge/roomiest.js ranks them). That account comes first
+// with its note (`tag`: "spend first", "most left", ...), then the others in the same ranking (`order`), then any it
+// doesn't rank (no fresh numbers) in their own order. Other agents stay one row each.
+// A row: { key, name, icon, tint, installed, run, tab, account, most, note, why }. `tab` names the tab it opens (the
+// agent's name, as the shipped menu does).
 
 export const MOST_LEFT = "most left";
 
@@ -35,10 +37,17 @@ export function agentRows(agents, accounts, best) {
       rows.push({ key: a.key, name: a.name, icon: a.icon, tint: a.tint, installed: a.installed, run, tab: a.name, account: null, most: false });
       continue;
     }
-    const top = best?.[kind]?.name ?? null;
-    const first = list.filter((x) => x.name === top);
-    for (const x of [...first, ...list.filter((x) => x.name !== top)]) {
-      rows.push({ key: `${a.key}:${x.name}`, name: x.name, icon: a.icon, tint: a.tint, installed: true, run: runFor(a, x), tab: a.name, account: x.name, agent: a.name, most: x.name === top });
+    const pick = best?.[kind];
+    const top = typeof pick?.name === "string" ? pick.name : null;
+    const ranked = [top, ...(Array.isArray(pick?.order) ? pick.order : [])].map((n) => list.find((x) => x.name === n)).filter(Boolean);
+    const ordered = [...new Set([...ranked, ...list])];
+    for (const x of ordered) {
+      const most = x.name === top;
+      rows.push({
+        key: `${a.key}:${x.name}`, name: x.name, icon: a.icon, tint: a.tint, installed: true, run: runFor(a, x), tab: a.name, account: x.name, agent: a.name, most,
+        note: most ? (typeof pick.tag === "string" && pick.tag ? pick.tag : MOST_LEFT) : null,
+        why: most && typeof pick.why === "string" ? pick.why : null,
+      });
     }
   }
   return rows;

@@ -38,6 +38,12 @@ function shownSpace() {
   const shown = spaces().find((p) => p.active);
   return shown && sortedSpaces().some((s) => s.name === shown.name) ? shown : null;
 }
+// The space spaces.json names "all" (it sorts nothing), when it is the shown one: the list then has
+// every space's threads in one, each row naming its space, the unsorted ones folded at the bottom.
+function everySpace() {
+  const name = shared(SPACES)?.all;
+  return name ? spaces().find((p) => p.active && p.name === name) ?? null : null;
+}
 // In the session's space when it has one (made if it was closed), else in the shown one.
 function openTab(tab, key) {
   const name = key ? spaceOf(key) : null;
@@ -128,6 +134,9 @@ const MAIN = { name: "codex", cmd: "codex", main: true };
 const HIDDEN = "sessions.hidden.codex";
 const HIDDEN_GROUP = "Hidden";
 const REQUEST = "sessions.request.codex";
+// For the tab strip over the session panels (pixel-session-tabs): the terminals of this list's
+// threads open in a Herdr tab, and how many threads it lists (hidden ones left out).
+const OPEN = "sessions.open.codex";
 
 // A tab started here runs `& 'codex' 'resume' '<id>' ...` in its shell, so the id finds it.
 // A thread forked in a Herdr tab has a new id; the Herdr sessions panel says which tab runs it.
@@ -161,7 +170,8 @@ export default class CodexSessions extends View {
       for (;;) {
         const command = await nextCommand();
         const req = shared(REQUEST);
-        if (!String(command).endsWith("request") || !req) continue;
+        // A pick waits for the list (the tab strip hands it on again).
+        if (!String(command).endsWith("request") || !req || !this.threads) continue;
         setShared(REQUEST, null);
         const s = (this.threads ?? []).find((x) => x.id === req.id);
         if (s) req.what === "menu" ? this.menu(s) : this.open(s);
@@ -185,6 +195,8 @@ export default class CodexSessions extends View {
         const mine = { home: this.home, accounts: this.accounts };
         if (JSON.stringify(shared("sessions.codex")) !== JSON.stringify(mine)) setShared("sessions.codex", mine);
         this.error = null;
+        const all = terminals();
+        this.shareOpen((s) => terminalFor(s, all));
       } catch (e) {
         this.error = String(e?.message ?? e);
       }
@@ -192,6 +204,15 @@ export default class CodexSessions extends View {
       this.spin = false;
       cx.notify();
     });
+  }
+
+  // Shares OPEN when it changed; `term` gives a thread's live terminal.
+  shareOpen(term) {
+    if (!this.threads) return;
+    const hiddenIds = new Set(shared(HIDDEN) ?? []);
+    const kept = this.threads.filter((s) => !hiddenIds.has(s.id));
+    const next = { terminals: [...new Set(kept.map((s) => term(s)?.address).filter(Boolean))].sort(), listed: kept.length };
+    if (JSON.stringify(shared(OPEN)) !== JSON.stringify(next)) setShared(OPEN, next);
   }
 
   fold(label) {
@@ -290,27 +311,30 @@ export default class CodexSessions extends View {
     const hiddenIds = new Set(shared(HIDDEN) ?? []);
     const filter = FILTERS.find((f) => f.id === this.filter) ?? FILTERS[0];
     const term = once((s) => terminalFor(s, all));
+    this.shareOpen(term);
     const when = once((s) => group(s.last ?? 0, now));
     const always = (s) => s.pin != null || Boolean(term(s));
     const shows = (s) => filter.keep(when(s)) || always(s);
     // The shown space's threads, and the ones open in its tabs; unsorted ones fold at the bottom.
     const shownSorted = shownSpace();
-    const here = this.scope === "all" ? null : shownSorted;
+    const every = everySpace();
+    const here = this.scope === "all" || every ? null : shownSorted;
     const spaceIn = spaceLookup();
     const sorted = once((s) => spaceIn(`codex:${s.id}`));
-    const inHere = once((s) => !here || sorted(s) === here.name || term(s)?.labels?.["herdr.space"] === here.id);
-    const loose = (s) => Boolean(here) && !inHere(s) && !sorted(s);
+    // The all-space has what any space lists: sorted into one, or open in a Herdr tab.
+    const inHere = once((s) => (every ? Boolean(sorted(s) || term(s)) : !here || sorted(s) === here.name || term(s)?.labels?.["herdr.space"] === here.id));
+    const loose = (s) => Boolean(here || every) && !inHere(s) && !sorted(s);
     const listed = (this.threads ?? []).filter((s) => !hiddenIds.has(s.id) && inHere(s));
     const list = listed.filter(shows);
     const unsorted = (this.threads ?? []).filter((s) => !hiddenIds.has(s.id) && loose(s) && shows(s));
-    const hidden = (this.threads ?? []).filter((s) => hiddenIds.has(s.id) && inHere(s) && shows(s));
+    const hidden = (this.threads ?? []).filter((s) => hiddenIds.has(s.id) && (every || inHere(s)) && shows(s));
 
     const row = (s) => {
       const k = term(s);
       const a = k && live.get(k.address);
       // A held lock with no tab of ours: the desktop app or another terminal has it.
       const elsewhere = s.open && !k;
-      const tip = [s.cwd, `${s.model ?? ""} · ${s.effort ?? ""}`, s.pin != null ? "Pinned" : null,
+      const tip = [s.cwd, every ? `Space: ${sorted(s) ?? "not sorted"}` : null, `${s.model ?? ""} · ${s.effort ?? ""}`, s.pin != null ? "Pinned" : null,
         s.origin === "derived" && s.how === "outside" ? `Made outside Herdr, reopened in a Herdr tab${s.account ? ` · ${s.account}` : ""}`
           : s.origin === "derived" ? `Forked in a Herdr tab${s.parent ? ` from «${s.parent}»` : ""}${s.account ? ` · ${s.account}` : ""}` : null,
         s.link ? `⇄ Paired with Claude session «${s.link.title}»: each handover adds to both` : null, elsewhere ? "Open elsewhere (desktop app or another terminal)" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Claude"]
@@ -349,6 +373,7 @@ export default class CodexSessions extends View {
         .child(div().flex_1().min_w(0).truncate().text_color(s.folder ? t.foreground : t.dim).child(s.title || "(untitled)"))
         .when(Boolean(s.link), (el) => el.child(div().flex_none().text_size(11).text_color(t.accent).child("⇄")))
         .when(elsewhere, (el) => el.child(div().flex_none().px(5).h(16).rounded(4).bg(t.raised).text_size(10).text_color(t.dim).flex().items_center().child("open")))
+        .when(Boolean(every && sorted(s)), (el) => el.child(div().flex_none().max_w(52).truncate().text_size(10).text_color(t.muted).child(sorted(s))))
         .child(div().flex_none().text_size(11).text_color(t.dim).child(ago(now - (s.last ?? 0)))));
     };
 
@@ -449,14 +474,16 @@ export default class CodexSessions extends View {
         .bg(t.raised)
         .text_size(10.5)
         .font_medium()
-        .text_color(on ? t.foreground : t.dim)
-        .cursor_pointer()
-        .hover((el) => el.text_color(t.foreground))
-        .tooltip(on ? `Threads sorted into ${shownSorted.name}, and any open in its tabs\nClick: every space` : `Every space's threads\nClick: only ${shownSorted.name}'s`)
-        .on_click((_e, cx) => {
-          this.setScope(on ? "all" : "space");
-          cx.notify();
-        })
+        .text_color(on || every ? t.foreground : t.dim)
+        .when(Boolean(every), (el) => el.tooltip(`${every.name}: every space's threads in one list, each row naming its space\nNot sorted ones fold at the bottom`))
+        .when(!every, (el) => el
+          .cursor_pointer()
+          .hover((el) => el.text_color(t.foreground))
+          .tooltip(on ? `Threads sorted into ${shownSorted.name}, and any open in its tabs\nClick: every space` : `Every space's threads\nClick: only ${shownSorted.name}'s`)
+          .on_click((_e, cx) => {
+            this.setScope(on ? "all" : "space");
+            cx.notify();
+          }))
         .child(on ? shownSorted.name : "All spaces");
     };
 
@@ -484,7 +511,7 @@ export default class CodexSessions extends View {
           .items_center()
           .justify_between()
           .child(div().flex_1().min_w(0).truncate().text_size(11.5).font_medium().text_color(t.dim).child("Codex sessions"))
-          .when(Boolean(shownSorted), (el) => el.child(scopeChip()))
+          .when(Boolean(shownSorted || every), (el) => el.child(scopeChip()))
           .child(div()
             .id("cx-search")
             .mr(10)

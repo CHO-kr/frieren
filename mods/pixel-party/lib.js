@@ -1,5 +1,6 @@
-﻿// Frieren pixel party: pure functions only (no herdr / gpui-kit calls).
-// pixel-party, pixel-tabs and pixel-pane each keep a copy of this file (a mod can't import outside its folder). Change all three.
+// Frieren pixel party: pure functions only (no herdr / gpui-kit calls).
+// pixel-party, pixel-tabs, pixel-pane and pixel-chronicle each keep a copy of this file (a mod can't import outside its folder). Change them all.
+// pixel-help's party.js holds a subset (ROSTER, character, facePath, agentKey, isAgentPane, alpha, mix): change it too.
 // Character picks are shared with the journey layout (shared "journey.party", journey-party/jobs.json), so a tab keeps its character.
 
 export const ROSTER = [

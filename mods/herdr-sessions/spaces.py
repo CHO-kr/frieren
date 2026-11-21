@@ -1,12 +1,14 @@
 # Which space each session belongs to, for the session panels: they show the shown space's
 # sessions, and open a session in its space. Prints {"spaces", "map": {"claude:<id>" | "codex:<id>":
-# space name}, "updated"} and writes it to space-map.json.
+# space name}, "all", "updated"} and writes it to space-map.json.
 #
 # The spaces come from spaces.json next to the lists (%LOCALAPPDATA%\herdr-sessions\spaces.json):
 #   {"spaces": [{"key", "name" (the Herdr space's name), "folder", "about",
 #                "words" (a regular expression, case-insensitive), "weight" (how much one word counts)}],
 #    "folders": {"<folder>": "<key>"},   a project folder (or a folder above one) -> its space
-#    "enough": 8}                        weighted words a space needs before it beats the folder
+#    "enough": 8,                        weighted words a space needs before it beats the folder
+#    "all": "All"}                       optional: a Herdr space that sorts nothing and, shown, lists
+#                                        every space's sessions in one list (passed on as "all")
 # Folders may start with "~". Without spaces.json nothing is sorted and the panels list every
 # session; spaces.example.json in this folder is a start.
 #
@@ -63,6 +65,9 @@ SPACES = [s for s in SETUP.get("spaces") or [] if isinstance(s, dict) and s.get(
 WORDS = {s["key"]: (float(s.get("weight") or 1), s.get("words") or "") for s in SPACES}
 PATTERNS = {k: re.compile(p, re.I) for k, (_, p) in WORDS.items() if p}
 ENOUGH = float(SETUP.get("enough") or 8)
+ALL = SETUP.get("all") if isinstance(SETUP.get("all"), str) and SETUP.get("all").strip() else None
+if ALL in {s["name"] for s in SPACES}:
+    ALL = None  # a space that sorts sessions can't also be the one listing them all
 READING = 3  # how transcripts are read; a change counts every transcript again
 SIGNATURE = hashlib.sha1(json.dumps([READING, sorted((k, p) for k, (_, p) in WORDS.items())], ensure_ascii=False).encode()).hexdigest()
 
@@ -211,10 +216,10 @@ def sessions():
 
 
 def finish(spaces, out):
-    data = {"updated": int(time.time() * 1000), "spaces": spaces, "map": out}
+    data = {"updated": int(time.time() * 1000), "spaces": spaces, "map": out, "all": ALL}
     text = json.dumps(data, ensure_ascii=False)
     old = load(OUT)
-    if not old or old.get("map") != out or old.get("spaces") != spaces:
+    if not old or old.get("map") != out or old.get("spaces") != spaces or old.get("all") != ALL:
         os.makedirs(STORE, exist_ok=True)
         write_atomic(OUT, text)
     sys.stdout.write(text)
