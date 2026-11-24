@@ -563,7 +563,7 @@ box holding a row of the same glyph.
 `mods/pixel-party/build/` rebuilds the fonts from the cut sprites in `build/spr/<id>.npz`
 (`python anim.py <spr> <fonts> <faces> <manifest.json>`). Each glyph's `hmtx` left side bearing must
 equal its `xMin`, or Windows shifts each color layer on its own and the sprite gets holes. Herdr keeps a
-loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` and all three `lib.js`).
+loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` and all four `lib.js`).
 
 **Mods**:
 - `pixel-party` (`main.js`, `lib.js`, `faces/`, `fonts/`, backdrops, `build/`): the party list. Every

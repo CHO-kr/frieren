@@ -37,7 +37,7 @@ The battle stage (pixel-pane with props { stage: true }):
 - stage_preview.py  python stage_preview.py <herdr home> <plans.json> <atlas dir> <out dir> gif: draws them exactly as
                     pixel-pane would (atlases from anim.py's preview dir and stage_art.py's atlas dir, in one folder)
 
-After a rebuild: raise FONT_VERSION in anim.py AND in lib.js (all three copies: pixel-party, pixel-tabs, pixel-pane),
+After a rebuild: raise FONT_VERSION in anim.py AND in lib.js (all four copies: pixel-party, pixel-tabs, pixel-pane, pixel-chronicle),
 run anim.py and stage_art.py, delete the old FrierenDot<old>-*.ttf, then make one look change (switch layouts, or
 wait for the next scene) so Herdr loads the new families.
 Fonts: every glyph's hmtx lsb must equal its xMin, or Windows shifts each colour layer separately.
