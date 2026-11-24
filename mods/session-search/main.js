@@ -60,17 +60,19 @@ export default class SessionSearch extends View {
       const hiddenClaude = new Set(shared("sessions.hidden.claude") ?? []);
       const hiddenCodex = new Set(shared("sessions.hidden.codex") ?? []);
       const hiddenHerdr = new Set(shared("sessions.hidden.herdr") ?? []);
+      // Deleted from a right-click menu, while the lists catch up.
+      const gone = new Set(shared("sessions.deleted") ?? []);
       // panel: the list that owns it and opens it; agent: Claude or Codex
       this.items = [
-        ...(herdr?.sessions ?? []).map((s) => ({
+        ...(herdr?.sessions ?? []).filter((s) => !gone.has(s.key)).map((s) => ({
           panel: "herdr", agent: s.kind, id: s.key, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
           account: s.account, busy: s.current ? "open" : null, hidden: hiddenHerdr.has(s.key), space: spaceOf(s.key),
         })),
-        ...(claude?.sessions ?? []).filter((s) => !s.archived).map((s) => ({
+        ...(claude?.sessions ?? []).filter((s) => !s.archived && !gone.has(`claude:${s.cli}`)).map((s) => ({
           panel: "claude", agent: "claude", id: s.cli, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
           linked: Boolean(s.link), busy: s.desktop ? "app" : null, hidden: hiddenClaude.has(s.cli), space: spaceOf(`claude:${s.cli}`),
         })),
-        ...(codex?.threads ?? []).map((s) => ({
+        ...(codex?.threads ?? []).filter((s) => !gone.has(`codex:${s.id}`)).map((s) => ({
           panel: "codex", agent: "codex", id: s.id, title: s.title || "(untitled)", cwd: s.cwd, last: s.last ?? 0,
           linked: Boolean(s.link), busy: s.open ? "open" : null, hidden: hiddenCodex.has(s.id), space: spaceOf(`codex:${s.id}`),
         })),

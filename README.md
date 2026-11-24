@@ -216,7 +216,9 @@ no settings changed.
 - **Pane headers**: one slim row: the character, the battle line with the tool's detail, the folder,
   the account, model and usage, and pixel buttons to split, zoom and close.
 - **Small windows**: the usage bar shrinks and scrolls sideways, so the tabs and the window buttons
-  always stay in view.
+  always stay in view. Tabs that don't fit go behind a `+N` button at the end of the strip (the tab
+  you're on always stays). It shows ◐ / ★ / a red `!` when one of them is working, done or needs you;
+  click it for the list, with faces and status, and pick one to go there.
 - **Which account to use next**: in the usage bar a ★ marks the Claude account and the Codex account
   to use next: one whose weekly (or 30-day) leftover expires within two days comes first ("spend it
   first"), else the one with the most room. An account whose 5-hour window is 90% full, or any window
@@ -274,7 +276,13 @@ no settings changed.
   (`claude`, `claude2`, …, `codex`, `codex2`, …), so they don't get lost among the app's. It finds them
   under the tabs' processes every 30 seconds and keeps them after the tab closes. `All · Claude ·
   Codex` filters; a click goes to the session's tab, or resumes it in a new one with the account that
-  made it; right-click for another account, a copy, or to hide it.
+  made it; right-click for another account, a copy, or to hide or delete it.
+- **Panes come back with their tab**: a session in a pane you split beside a tab's first session is
+  folded into that session's row, which counts them (`◫ +2`). Clicking the row reopens the tab with
+  those panes beside it, each with its own account and folder: the ones still open when you last left
+  it, not ones you closed earlier. Right-click → `Open without its panes`, or open any of its panes
+  alone. Picking a pane in the search brings its tab back too. A pane whose tab started with a plain
+  shell stays a row of its own, marked `◫`.
 - **Sessions sorted into your spaces** (optional, see [Customize](#customize)): with a `spaces.json`,
   every session in the three lists is sorted into one of your Herdr spaces by the words of its
   conversation (its title counts most) and by its folder. While one of those spaces is shown, each
@@ -294,6 +302,10 @@ no settings changed.
 - **Switch accounts or agents per session**: right-click a session to continue it with another
   account, or hand it to the other agent (Claude → Codex, Codex → Claude). Handed-over pairs are
   remembered (`⇄`), and later moves pass on only the new turns.
+- **Delete a session** from its right-click menu (it asks first). A Claude session's conversation goes
+  to the Recycle Bin. A Codex task is deleted by Codex itself, together with the sub-agent tasks it
+  started. It refuses while the session is open: in a tab, in the desktop app, or written to in the
+  last two minutes. Working folders stay.
 - **Session search** (`Ctrl+Shift+S`): a popup that searches every session by title, folder and space
   (each row says its space), with All / Herdr / Claude / Codex filters (one per list) and keyboard
   navigation.
@@ -404,7 +416,9 @@ Frieren Pixel. The pixel mods also read `journey-party/jobs.json`, `journey-spac
 | Rename a tab to `Fern`, `Stark`, … | that tab's agent becomes that character |
 | Click **Journey · Day N** (Frieren Pixel) | skip to the next background scene (its colors and monster come with it) |
 | Click a session in **Herdr sessions** / **Claude sessions** / **Codex sessions** | resume it in a new tab in its folder, or focus it if it's already open |
-| Right-click a session | continue with another account, hand over to the other agent, hide it, or move it to another space |
+| Click a Herdr session marked `◫ +N` | reopen its tab with the panes that were open beside it |
+| Right-click a session | continue with another account, hand over to the other agent, hide or delete it, or move it to another space |
+| Click `+N` at the end of the tabs (Frieren Pixel) | list the tabs that didn't fit, and go to one |
 | Click the space chip in a list's header | switch between the shown space's sessions and every space's |
 | `Ctrl+Shift+S` | search every session. `Tab` switches filter, `↑`/`↓` move, `Enter` opens, `Esc` closes |
 | Click / hover a usage chip | refresh now / see every window, its reset time, plan and login |

@@ -4,11 +4,13 @@
 // or folder, else its program (names.js; the tab itself keeps its number). A colored bar on the left marks its project
 // (the repo root or folder of its first pane), the same color for the same project.
 // The + menu is pixel-new-menu (accounts listed, the one with the most usage left first).
+// Tabs that don't fit go behind a "+N" button at the strip's end (the shown tab always stays in sight); it opens this
+// mod as a popup listing them (props {overflow: {tabs}}), a click selects one.
 // Reads: the session caches (claude-list.json, codex-list.json) once a minute; `git rev-parse --show-toplevel` once per
 // first-pane folder (again after 10 minutes).
 import { View, div, svg, image } from "gpui-kit";
-import { h_flex } from "gpui-base";
-import { agents, spaces, panes, terminals, run, openOverlay, theme, window, shared, setShared, layout, settings, appHome, home, readTextFile, exec, checking } from "herdr";
+import { h_flex, v_flex } from "gpui-base";
+import { agents, spaces, panes, terminals, run, openOverlay, closeOverlay, props, theme, window, shared, setShared, layout, settings, appHome, home, readTextFile, exec, checking } from "herdr";
 import { character, facePath, entriesFor, settle, alpha, mix } from "./lib.js";
 import { isUnnamed, tabFacts, projectColor, unnamedTip } from "./names.js";
 
@@ -27,9 +29,20 @@ function find(node, id) {
   return null;
 }
 
+// The strip: the gap between tabs, the "+N" button's width, and a tab's width until it has been drawn once.
+const GAP = 5;
+const MORE_W = 58;
+const TAB_GUESS = 200;
+const STATUS_MARK = { working: "◐", blocked: "!", done: "★" };
+const moreListHeight = (n) => Math.min(n, 12) * 40;
+
 export default class PixelTabs extends View {
   init(_props, cx) {
+    // The "+N" popup copy draws from its props alone.
+    if (_props?.overflow) return;
     this.pressed = null;
+    this.stripW = null;
+    this.tabW = {};
     this.jobs = {};
     this.jobsLoaded = false;
     cx.spawn(async (cx) => {
@@ -110,8 +123,24 @@ export default class PixelTabs extends View {
     try { localStorage.setItem("panels", JSON.stringify(this.panels)); } catch {}
   }
 
+  // The "+N" popup: the tabs that didn't fit, each with its face, project color and status.
+  overflowList(t, { tabs }) {
+    const row = (x) => h_flex().id(`more-${x.id}`).h(40).px(8).gap(7).items_center().flex_none().cursor_pointer()
+      .hover((s) => s.bg(t.hover)).tooltip(x.tip)
+      .on_click(() => { closeOverlay(props().overlay); run("tab.select", { id: x.id }); })
+      .child(div().w(4).h(26).flex_none().when(Boolean(x.mark), (el) => el.bg(x.mark)))
+      .child(x.face ? image(x.face).size(30).flex_none() : div().size(30).flex_none())
+      .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(x.name))
+      .when(Boolean(STATUS_MARK[x.status]), (el) => el.child(div().flex_none().text_color(t[x.status] ?? t.muted).child(STATUS_MARK[x.status])));
+    // A popup takes its content's height, so the list has a fixed one (it scrolls past 12 rows).
+    return v_flex().w_full().p(4).bg(t.popover).text_size(12.5)
+      .child(div().px(8).pt(4).pb(4).flex_none().text_size(11).text_color(t.dim).child(`${tabs.length} more ${tabs.length === 1 ? "tab" : "tabs"}`))
+      .child(v_flex().id("more-list").h(moreListHeight(tabs.length)).flex_none().overflow_y_scrollbar().children(tabs.map(row)));
+  }
+
   render(cx) {
     const t = theme();
+    if (props()?.overflow) return this.overflowList(t, props().overflow);
     const sp = spaces();
     const list = agents();
     const space = sp.find((p) => p.active);
@@ -130,7 +159,7 @@ export default class PixelTabs extends View {
     const button = (id, icon, action, tip) => div().id(id).size(30).flex_none().flex().items_center().justify_center().text_color(t.dim)
       .hover((s) => s.bg(t.hover).text_color(t.accent)).when(Boolean(tip), (el) => el.tooltip(tip))
       .on_mouse_down("left", stop).on_click(action).child(svg(ICON(icon)).size(16));
-    const item = (c, i) => {
+    const look = (c) => {
       const program = ps.find((p) => p.tab === c.id && p.program?.agent)?.program ?? ps.find((p) => p.tab === c.id)?.program;
       const facts = factsOf(c);
       // Nobody named it: its number, then a name it's shown under (never given to the tab).
@@ -138,12 +167,16 @@ export default class PixelTabs extends View {
       const name = derived ? `${c.index} · ${derived.text}` : /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name;
       const ch = character(picks[`tab:${c.id}`]);
       const mark = facts.project ? projectColor(facts.project.key, t) : null;
-      const text = c.active ? t.foreground : t.muted;
       const tip = [
         ch ? `${name} · ${ch.name} (${ch.role})` : name,
         derived ? unnamedTip(derived.source) : null,
         facts.project?.name ? `Project: ${facts.project.name}` : null,
       ].filter(Boolean).join("\n");
+      return { program, derived, name, ch, mark, tip };
+    };
+    const item = (c, i) => {
+      const { program, derived, name, ch, mark, tip } = look(c);
+      const text = c.active ? t.foreground : t.muted;
       const label = derived
         ? h_flex().max_w(170).min_w(0).gap(5).items_center()
           .child(div().flex_none().child(String(c.index)))
@@ -152,6 +185,7 @@ export default class PixelTabs extends View {
       return h_flex().id(`tab-${c.id}`).h(44).pl(2).pr(9).gap(7).items_center().flex_none()
         .border(2).border_color(c.active ? t.accent : alpha(t.border, "70")).bg(c.active ? alpha(t.accent, "1c") : alpha(t.background, "6b")).text_color(text)
         .hover((s) => s.bg(t.hover))
+        .on_size_change((size, cx) => { if (Math.abs((this.tabW[c.id] ?? -9) - size.width) > 0.5) { this.tabW[c.id] = size.width; cx.notify(); } })
         .tooltip(tip)
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {
@@ -191,9 +225,47 @@ export default class PixelTabs extends View {
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child(svg(icon).size(16).flex_none().text_color(t.accent)).child(div().min_w(0).truncate().child(label));
     };
+    // Which tabs fit: in order while there's room, and the shown one always; the rest go behind "+N", which sits in
+    // the strip so the strip's width doesn't change with it.
+    const width = (c) => this.tabW[c.id] ?? TAB_GUESS;
+    const total = shown.reduce((n, c) => n + width(c), 0) + GAP * Math.max(0, shown.length - 1);
+    let fits = shown.map((_c, i) => i);
+    if (this.stripW != null && total > this.stripW + 0.5) {
+      const room = this.stripW - MORE_W - GAP;
+      const at = shown.findIndex((c) => c.active);
+      const keep = new Set(at >= 0 ? [at] : []);
+      let used = at >= 0 ? width(shown[at]) : -GAP;
+      for (let i = 0; i < shown.length; i++) {
+        if (keep.has(i)) continue;
+        if (used + GAP + width(shown[i]) > room) break;
+        used += GAP + width(shown[i]);
+        keep.add(i);
+      }
+      fits = [...keep].sort((a, b) => a - b);
+    }
+    const left = shown.filter((_c, i) => !fits.includes(i));
+    // The button takes the color of what most needs you behind it: a blocked tab, then a finished one.
+    const loudest = ["blocked", "done", "working"].find((s) => left.some((c) => c.status === s));
+    const openMore = () => openOverlay({
+      mod: "pixel-tabs", kind: "popup", width: 300, height: 38 + moreListHeight(left.length),
+      props: { overflow: { tabs: left.map((c) => {
+        const l = look(c);
+        return { id: c.id, name: c.zoomed ? `${l.name} Z` : l.name, tip: l.tip, face: l.ch ? facePath(l.ch) : null, mark: l.mark, status: c.status };
+      }) } },
+    });    const more = () => h_flex().id("tab-more").h(44).w(MORE_W).flex_none().gap(4).items_center().justify_center()
+      .border(2).border_color(loudest === "blocked" ? t.blocked : alpha(t.border, "70")).bg(alpha(t.background, "6b")).text_color(t.muted)
+      .hover((s) => s.bg(t.hover).text_color(t.accent))
+      .tooltip(`${left.length} more ${left.length === 1 ? "tab" : "tabs"}: click to pick one`)
+      .on_mouse_down("left", stop)
+      .on_click(() => openMore())
+      .child(div().child(`+${left.length}`))
+      .child(loudest ? div().text_color(t[loudest]).child(STATUS_MARK[loudest]) : svg(ICON("chevron-down")).size(12).flex_none());
     return h_flex().size_full().min_w(0).pr(6).pl(lightsPadding).gap(5).items_center().text_size(12)
       .on_mouse_up("left", () => { this.pressed = null; })
-      .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(5).overflow_x_scrollbar().children(shown.map(item)))
+      .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(GAP).overflow_hidden()
+        .on_size_change((size, cx) => { if (Math.abs((this.stripW ?? -9) - size.width) > 0.5) { this.stripW = size.width; cx.notify(); } })
+        .children(fits.map((i) => item(shown[i], i)))
+        .when(left.length > 0, (el) => el.child(more())))
       .child(button("tab-new", "plus", () => openOverlay({ mod: "pixel-new-menu", kind: "popup", width: 250, height: 560 }), "New tab"))
       .when(enabled.includes("files"), (el) => el.child(panelButton("files", "Files", ICON("grimoire"))))
       .when(enabled.includes("changes"), (el) => el.child(panelButton("changes", "Changes", ICON("quill"))))

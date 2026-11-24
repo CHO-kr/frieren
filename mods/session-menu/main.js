@@ -5,12 +5,16 @@
 //   {tab: tab.new args, key?}          open it (in the space of session `key`, as the panels do)
 //   {assign: {key, space}}             sort session `key` into a space (null: back to its words)
 //   {focus: pane}                      go to the tab that has the session open
+//   {request: {panel, id, account?, alone?}}  hand the opening back to that panel (a main
+//                 session opens with its panes in steps, which a closed menu can't wait for)
 //   {confirm: …}                       ask first, in a dialog
 //   {toCodex: {path, cwd, title, perm, account, home}}   hand a Claude session to its Codex pair
 //   {toClaude: {thread, bypass, account}}                hand a Codex thread to its Claude pair
 //                 (bridge.py: the first move makes the pair, later ones reopen it with what's new)
 //   {hide: {key, id, hidden}}          hide it from its panel, or show it again (a shared list)
 //   {resetPass: {account}}             spend one Codex "Full reset" pass (after a confirm), then refresh the gauges
+//   {forget: {kind, id, home, title}}  delete a session (after a confirm): forget.py, then it leaves every list
+//                 (Claude: to the Recycle Bin; Codex: `codex delete`, for good)
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -20,6 +24,9 @@ import { exec, run, spaces, theme, props, openOverlay, closeOverlay, notify, app
 const SPACES = "sessions.spaces";
 const ASSIGN = "sessions.space.assign";
 const sortedSpaces = () => shared(SPACES)?.spaces ?? [];
+// Deleted sessions ("claude:<id>" | "codex:<id>"): the panels and the search leave them out at
+// once, before their next refresh.
+const DELETED = "sessions.deleted";
 const spaceOf = (key) => (shared(ASSIGN) ?? {})[key] ?? shared(SPACES)?.map?.[key] ?? null;
 function openTab(tab, key) {
   const name = key ? spaceOf(key) : null;
@@ -66,6 +73,12 @@ export default class SessionMenu extends View {
       this.done();
       return run("pane.focus", { pane: action.focus });
     }
+    if (action.request) {
+      const { panel, ...req } = action.request;
+      this.done();
+      setShared(`sessions.request.${panel}`, { what: "open", ...req, at: Date.now() });
+      return run(`${panel}-sessions.request`);
+    }
     if (action.hide) {
       const { key, id, hidden } = action.hide;
       const ids = new Set(shared(key) ?? []);
@@ -81,6 +94,25 @@ export default class SessionMenu extends View {
     if (action.toCodex) return this.work(cx, "Handing over to Codex…", "Couldn't hand over", async () => ({ tab: await this.toCodex(action.toCodex) }));
     if (action.toClaude) return this.work(cx, "Preparing the handover to Claude…", "Couldn't hand over", async () => ({ tab: await this.toClaude(action.toClaude) }));
     if (action.resetPass) return this.work(cx, "Using a reset pass…", "Couldn't use the reset pass", () => this.resetPass(action.resetPass));
+    if (action.forget) return this.work(cx, "Deleting…", "Couldn't delete", () => this.forget(action.forget));
+  }
+
+  // Deletes it, then takes it out of the lists, the hidden lists and the space picks.
+  async forget({ kind, id, home, title }) {
+    await this.python("session-menu/forget.py", kind === "codex" ? [kind, id, home] : [kind, id]);
+    const key = `${kind}:${id}`;
+    setShared(DELETED, [...(shared(DELETED) ?? []).filter((k) => k !== key), key].slice(-300));
+    for (const [list, item] of [["sessions.hidden.herdr", key], [`sessions.hidden.${kind}`, id]]) {
+      const ids = shared(list) ?? [];
+      if (ids.includes(item)) setShared(list, ids.filter((x) => x !== item));
+    }
+    const picks = shared(ASSIGN) ?? {};
+    if (key in picks) {
+      const { [key]: _gone, ...rest } = picks;
+      setShared(ASSIGN, rest);
+    }
+    const where = kind === "claude" ? "Its conversation is in the Recycle Bin." : "Codex deleted it.";
+    return { notice: { title: "Deleted", body: `${title || "(untitled)"} · ${where}`, level: "success", timeout: 8000 } };
   }
 
   // Shows what's happening, then closes. The job returns what to do next: open a tab, say
@@ -181,8 +213,8 @@ export default class SessionMenu extends View {
       .text_size(12.5)
       .font_medium()
       .cursor_pointer()
-      .bg(a.primary ? t.solid : t.raised)
-      .text_color(a.primary ? t.solid_foreground : t.foreground)
+      .bg(a.danger ? (t.blocked ?? t.solid) : a.primary ? t.solid : t.raised)
+      .text_color(a.primary || a.danger ? t.solid_foreground : t.foreground)
       .when(!a.primary, (el) => el.hover((el) => el.bg(t.hover)))
       .on_click((_e, cx) => this.act(a.action, cx))
       .child(a.label);
@@ -203,6 +235,8 @@ export default class SessionMenu extends View {
   render() {
     const t = theme();
     const p = props() ?? {};
+    // A job started from a dialog (Delete, a reset pass) shows its spinner there too.
+    if (this.busy) return this.menu(t, null);
     if (p.confirm) return this.confirm(t, p.confirm);
     if (p.menu) return this.menu(t, p.menu);
     return div();

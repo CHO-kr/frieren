@@ -158,14 +158,15 @@ Translucency is in the alpha: `chrome` `#0d1427c8`, `surface` `#111a30c8`, `popo
   If the Claude desktop app (or, for another Codex account, another app) has it open, a dialog asks:
   Cancel / Open a copy (fork) / Continue as `<account>`. A Herdr sessions row resumes with the account
   that made it (`claude2 --resume <path>`, `codex3 resume <id>`), and its right click offers that
-  agent's other accounts, Open a copy, and Hide.
+  agent's other accounts, Open a copy, Hide and Delete….
 - **Which list a session is in**: the Claude and Codex lists hold the desktop apps' sessions. A session
   started new in a Herdr tab goes to Herdr sessions (and is left out of the Codex list). A copy made in a
   Herdr tab of an app session, and a session made in another terminal and reopened in a tab, go to the
   Claude or Codex list, their tooltip saying `Forked in a Herdr tab from «…»` or `Made outside Herdr`.
 - **Session row right click**: a popup with every account of that agent ("Continue with a Claude
   account", each with its login email), every account of the other agent ("Hand over to Codex" /
-  "Hand over to Claude"), and Hide from panel / Show again. Handing work over keeps one session per side.
+  "Hand over to Claude"), Hide from panel / Show again, and Delete… (a confirm with a `blocked` button;
+  only a note while it's open in a tab or the app). Handing work over keeps one session per side.
   The first move creates the other side's session (Codex's own importer for Claude→Codex; a new Claude
   session with a fixed id for Codex→Claude, whose first message points at a Markdown hand-off of the
   conversation). Later moves reopen the same pair and hand over only the turns since the last move.
@@ -262,6 +263,13 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
   the thread's name), cwd, last activity. Shared `sessions.request.herdr`, `sessions.hidden.herdr`.
   It never writes to Claude's or Codex's own files. Resuming with the main `claude` account adds
   `--remote-control <title>` (a copy: `<title> (copy)`), so the Claude desktop app lists it.
+  **Panes**: an open session whose terminal isn't its tab's oldest (`created_ms`) gets `pane` and
+  `beside` (the oldest terminal's session); older entries get it once from their tab (base-36 terminal
+  order once it's gone). A main row's `with_panes`: its panes last seen within 5 min of it, one per
+  terminal, in terminal order. The panel folds pane rows into their main row (`◫ +N` in `accent`; a
+  pane takes its main's space); a click runs `tab.new`, then per pane `pane.focus` + `terminal.open
+  {argv, folder, place}` (first `right`, then `down`), waiting for each new pane in `panes()`. Right
+  click adds Open without its panes and a Panes group; menu picks come back as `request`.
   Every 60 s it also runs `spaces.py` (`exec` timeout 180 s) and shares the answer as
   `sessions.spaces` (`{spaces: [{name, folder, about}], map: {"claude:<id>" | "codex:<id>": name}}`).
   `spaces.py` reads `%LOCALAPPDATA%\herdr-sessions\spaces.json` (`spaces: [{key, name, folder, about,
@@ -296,7 +304,11 @@ hidden, 1px `border`)], `status` block (`workspace-status`, 28px)]. Root also se
 - `session-menu` (`main.js`, `bridge.py`): draws the popup menu (`props.menu`) and the confirm dialog
   (`props.confirm`). Actions are data: `tab` (with the session `key`, opened in its space), `assign`
   (`{key, space}`: sets or, with `null`, removes the pick in shared `sessions.space.assign`), `focus`,
-  `confirm`, `hide`, `toCodex`, `toClaude`, `resetPass`. `bridge.py to-codex <jsonl> <cwd> <title>` / `to-claude <thread> <claude config dir>`
+  `confirm`, `hide`, `toCodex`, `toClaude`, `resetPass`, `request` (sets `sessions.request.<panel>`) and
+  `forget` (`forget.py claude <id>`: transcripts, folders and desktop record to the Recycle Bin;
+  `forget.py codex <id> <home>`: `codex delete --force`, sub-agent threads first; both refuse a live
+  process, a held lock or a write in the last 2 min; the key joins shared `sessions.deleted`, which the
+  lists and the search leave out). `bridge.py to-codex <jsonl> <cwd> <title>` / `to-claude <thread> <claude config dir>`
   keeps pairs in `%LOCALAPPDATA%\herdr-sessions\links.json`. It writes hand-offs to `…\handoff\*.md`
   (at most 120,000 characters, keeping the first request and the newest turns) and uses the app-server's
   `externalAgentConfig/import` for the first Claude→Codex move.
@@ -650,6 +662,9 @@ loaded family in memory, so a rebuild needs a new `FONT_VERSION` (in `anim.py` a
   caches), else its first pane's repo root name, else its
   folder (`~` for home), else its program; the tooltip says which. Left of the face a 4×30px bar in its
   project's color (a hash of the repo root or folder into eight colors mixed from the theme's palette).
+  Tabs that don't fit (widths from `on_size_change`) go behind a 58px `+N` slot at the strip's end; the
+  active tab always stays. It opens `pixel-tabs` itself as a popup (`props.overflow.tabs`, a fixed-height
+  list of 40px rows: face, color bar, name, status); a row runs `tab.select`.
 - `usage-gauge` (+ `roomiest.js`, `roomiest.test.mjs`): the chips sit in a row that shrinks and scrolls
   sideways (`min_w(0)`, `overflow_x_scrollbar`); the Results button keeps its size. Per agent the
   account with the lowest shown use (Claude: weekly; Codex: its fullest window; ties by the other

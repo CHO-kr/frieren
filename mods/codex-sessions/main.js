@@ -137,6 +137,28 @@ const REQUEST = "sessions.request.codex";
 // For the tab strip over the session panels (pixel-session-tabs): the terminals of this list's
 // threads open in a Herdr tab, and how many threads it lists (hidden ones left out).
 const OPEN = "sessions.open.codex";
+// Sessions deleted from a right-click menu ("claude:<id>" | "codex:<id>"), left out until the list
+// catches up. The same few lines are in the Herdr and Claude panels.
+const DELETED = "sessions.deleted";
+const deletedKeys = () => new Set(shared(DELETED) ?? []);
+// "Delete…": asks first; session-menu's forget.py removes it (Claude: to the Recycle Bin; Codex:
+// its own delete, for good). Not while it's open somewhere.
+function deleteItem(kind, id, title, home, openWhere) {
+  if (openWhere) return { label: "Delete…", note: `Open ${openWhere}: close it first`, action: null };
+  const claude = kind === "claude";
+  return {
+    label: "Delete…",
+    note: claude ? "Its conversation goes to the Recycle Bin" : "Codex deletes it for good",
+    action: {
+      confirm: {
+        heading: claude ? "Delete this Claude session?" : "Delete this Codex task?",
+        body: `‘${title || "(untitled)"}’ leaves every list, and ${claude ? "its conversation goes to the Recycle Bin" : "Codex deletes its history for good"}.`,
+        hint: claude ? "Its working folder stays. The Claude desktop app may list it until it restarts." : "Its working folder stays. Sub-agent tasks it started go too.",
+        actions: [{ label: "Cancel", action: null }, { label: "Delete", primary: true, danger: true, action: { forget: { kind, id, home, title } } }],
+      },
+    },
+  };
+}
 
 // A tab started here runs `& 'codex' 'resume' '<id>' ...` in its shell, so the id finds it.
 // A thread forked in a Herdr tab has a new id; the Herdr sessions panel says which tab runs it.
@@ -210,7 +232,8 @@ export default class CodexSessions extends View {
   shareOpen(term) {
     if (!this.threads) return;
     const hiddenIds = new Set(shared(HIDDEN) ?? []);
-    const kept = this.threads.filter((s) => !hiddenIds.has(s.id));
+    const gone = deletedKeys();
+    const kept = this.threads.filter((s) => !hiddenIds.has(s.id) && !gone.has(`codex:${s.id}`));
     const next = { terminals: [...new Set(kept.map((s) => term(s)?.address).filter(Boolean))].sort(), listed: kept.length };
     if (JSON.stringify(shared(OPEN)) !== JSON.stringify(next)) setShared(OPEN, next);
   }
@@ -295,7 +318,8 @@ export default class CodexSessions extends View {
       label: "List",
       items: [hidden
         ? { label: "Show again", note: "Back from Hidden to its place", action: { hide: { key: HIDDEN, id: s.id, hidden: false } } }
-        : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.id, hidden: true } } }],
+        : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.id, hidden: true } } },
+        deleteItem("codex", s.id, s.title, s.home || this.home, terminalFor(s, terminals()) ? "in a Herdr tab" : s.open ? "elsewhere (desktop app or a terminal)" : null)],
     });
     if (sortedSpaces().length) groups.push(spaceGroup(`codex:${s.id}`));
     const rows = groups.reduce((n, g) => n + g.items.length, 0);
@@ -324,10 +348,12 @@ export default class CodexSessions extends View {
     // The all-space has what any space lists: sorted into one, or open in a Herdr tab.
     const inHere = once((s) => (every ? Boolean(sorted(s) || term(s)) : !here || sorted(s) === here.name || term(s)?.labels?.["herdr.space"] === here.id));
     const loose = (s) => Boolean(here || every) && !inHere(s) && !sorted(s);
-    const listed = (this.threads ?? []).filter((s) => !hiddenIds.has(s.id) && inHere(s));
+    const gone = deletedKeys();
+    const threads = (this.threads ?? []).filter((s) => !gone.has(`codex:${s.id}`));
+    const listed = threads.filter((s) => !hiddenIds.has(s.id) && inHere(s));
     const list = listed.filter(shows);
-    const unsorted = (this.threads ?? []).filter((s) => !hiddenIds.has(s.id) && loose(s) && shows(s));
-    const hidden = (this.threads ?? []).filter((s) => hiddenIds.has(s.id) && (every || inHere(s)) && shows(s));
+    const unsorted = threads.filter((s) => !hiddenIds.has(s.id) && loose(s) && shows(s));
+    const hidden = threads.filter((s) => hiddenIds.has(s.id) && (every || inHere(s)) && shows(s));
 
     const row = (s) => {
       const k = term(s);
@@ -337,7 +363,7 @@ export default class CodexSessions extends View {
       const tip = [s.cwd, every ? `Space: ${sorted(s) ?? "not sorted"}` : null, `${s.model ?? ""} · ${s.effort ?? ""}`, s.pin != null ? "Pinned" : null,
         s.origin === "derived" && s.how === "outside" ? `Made outside Herdr, reopened in a Herdr tab${s.account ? ` · ${s.account}` : ""}`
           : s.origin === "derived" ? `Forked in a Herdr tab${s.parent ? ` from «${s.parent}»` : ""}${s.account ? ` · ${s.account}` : ""}` : null,
-        s.link ? `⇄ Paired with Claude session «${s.link.title}»: each handover adds to both` : null, elsewhere ? "Open elsewhere (desktop app or another terminal)" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Claude"]
+        s.link ? `⇄ Paired with Claude session «${s.link.title}»: each handover adds to both` : null, elsewhere ? "Open elsewhere (desktop app or another terminal)" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Claude, hide or delete"]
         .filter(Boolean)
         .join("\n");
       const right = (el) => el.on_mouse_down("right", (_e, cx) => {

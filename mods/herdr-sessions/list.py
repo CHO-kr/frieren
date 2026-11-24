@@ -318,6 +318,80 @@ def read_json(path, default):
         return default
 
 
+def pane_roles(terms, reg, keys):
+    """Which pane of its tab each open session (`keys`) is in. The tab's oldest terminal is the one
+    it was opened with (its main pane); a later one is a pane added beside it (a split). Kept in
+    the registry, so a closed tab's sessions still say so; "beside" names the main pane's session."""
+    first = {}
+    for t in terms:
+        tab = (t.get("labels") or {}).get("herdr.tab")
+        if tab and (tab not in first or (t.get("created_ms") or 0) < (first[tab].get("created_ms") or 0)):
+            first[tab] = t
+    at = {reg[k]["terminal"]: k for k in keys}
+    for k in keys:
+        e = reg[k]
+        main_t = first.get(e.get("tab"))
+        e["pane"] = bool(main_t) and main_t["address"] != e["terminal"]
+        e["beside"] = at.get(main_t["address"]) if e["pane"] else None
+
+
+def address_order(address):
+    """Herdr numbers terminals in base 36 as it makes them (t17s, t17t, …, t1c9)."""
+    try:
+        return int(address[1:], 36)
+    except (TypeError, ValueError):
+        return 1 << 62
+
+
+def backfill_panes(terms, reg):
+    """Sessions seen before pane_roles existed get their role once, from what is known of their tab:
+    its terminals still in Herdr (their creation times), or else the oldest terminal among the
+    tab's sessions here (a tab opened with a plain shell then looks as if its first agent was the
+    main one). "beside" is the main terminal's session nearest in time."""
+    oldest = {}
+    for t in terms:
+        tab = (t.get("labels") or {}).get("herdr.tab")
+        if tab and (tab not in oldest or (t.get("created_ms") or 0) < (oldest[tab].get("created_ms") or 0)):
+            oldest[tab] = t
+    by_tab = {}
+    for k, e in reg.items():
+        if e.get("tab") and e.get("terminal"):
+            by_tab.setdefault(e["tab"], []).append(k)
+    for tab, keys in by_tab.items():
+        todo = [k for k in keys if "pane" not in reg[k]]
+        if not todo:
+            continue
+        main = oldest[tab]["address"] if tab in oldest else min((reg[k]["terminal"] for k in keys), key=address_order)
+        in_main = [k for k in keys if reg[k]["terminal"] == main]
+        for k in todo:
+            e = reg[k]
+            e["pane"] = e["terminal"] != main
+            near = sorted(in_main, key=lambda m: abs((reg[m].get("last_seen") or 0) - (e.get("last_seen") or 0)))
+            e["beside"] = near[0] if e["pane"] and near else None
+
+
+TOGETHER = 300_000  # panes last seen this close to their main session were still open with it
+
+
+def with_panes(rows):
+    """Each main session's "with_panes": the panes added beside it that were still open when it was
+    last seen (so closed with its tab, not earlier), one per pane terminal (the one seen last), in
+    the order the panes were made. The panel opens them with it."""
+    by_key = {r["key"]: r for r in rows}
+    found = {}
+    for r in rows:
+        m = by_key.get(r.get("beside")) if r.get("pane") else None
+        if not m or m.get("pane") or m is r:
+            continue
+        end = m.get("last_seen") or 0
+        if (r.get("last_seen") or 0) >= end - TOGETHER and (r.get("first_seen") or 0) <= end + TOGETHER:
+            found.setdefault(m["key"], {}).setdefault(r.get("terminal"), []).append(r)
+    for key, terms in found.items():
+        picks = [max(rs, key=lambda x: (x.get("last_seen") or 0, x.get("last") or 0)) for rs in terms.values()]
+        picks.sort(key=lambda x: address_order(x.get("terminal")))
+        by_key[key]["with_panes"] = [x["key"] for x in picks]
+
+
 # ---------- the registry ---------------------------------------------------------------------
 
 def load_registry():
@@ -436,6 +510,8 @@ def main():
                     continue
                 note(f"codex:{tid}", {"kind": "codex", "account": a["name"], "id": tid, "started": start, "daemon": True}, rest[addr][0])
                 used.add(addr)
+        pane_roles(terms, reg, current)
+    backfill_panes(terms, reg)
 
     # Facts for the list: titles, folders, last activity, how to resume.
     cl = {a["name"]: a for a in claudes}
@@ -552,6 +628,8 @@ def main():
                         "model": th["model"], "effort": th["effort"], "approval": th["approval"], "sandbox": th["sandbox"],
                         "originator": th["originator"], "home": cx[e["account"]]["home"] if e["account"] in cx else None})
         row["folder"] = bool(row.get("cwd")) and os.path.isdir(row["cwd"])
+        if e.get("pane"):
+            row.update({"pane": True, "beside": e.get("beside"), "beside_title": title_of(e["beside"]) if e.get("beside") else ""})
         row["root"] = root = e.get("root")
         if root == "herdr":
             out.append(row)
@@ -567,6 +645,7 @@ def main():
             row["parent"] = e.get("parent")
             row["parent_title"] = title_of(e.get("parent")) if e.get("parent") else ""
             derived.append(row)
+    with_panes(out)
     for key in drop:
         reg.pop(key, None)
     save_registry(reg)

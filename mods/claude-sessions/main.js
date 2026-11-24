@@ -140,6 +140,28 @@ const REQUEST = "sessions.request.claude";
 // For the tab strip over the session panels (pixel-session-tabs): the terminals of this list's
 // sessions open in a Herdr tab, and how many sessions it lists (hidden ones left out).
 const OPEN = "sessions.open.claude";
+// Sessions deleted from a right-click menu ("claude:<id>" | "codex:<id>"), left out until the list
+// catches up. The same few lines are in the Herdr and Codex panels.
+const DELETED = "sessions.deleted";
+const deletedKeys = () => new Set(shared(DELETED) ?? []);
+// "Delete…": asks first; session-menu's forget.py removes it (Claude: to the Recycle Bin; Codex:
+// its own delete, for good). Not while it's open somewhere.
+function deleteItem(kind, id, title, home, openWhere) {
+  if (openWhere) return { label: "Delete…", note: `Open ${openWhere}: close it first`, action: null };
+  const claude = kind === "claude";
+  return {
+    label: "Delete…",
+    note: claude ? "Its conversation goes to the Recycle Bin" : "Codex deletes it for good",
+    action: {
+      confirm: {
+        heading: claude ? "Delete this Claude session?" : "Delete this Codex task?",
+        body: `‘${title || "(untitled)"}’ leaves every list, and ${claude ? "its conversation goes to the Recycle Bin" : "Codex deletes its history for good"}.`,
+        hint: claude ? "Its working folder stays. The Claude desktop app may list it until it restarts." : "Its working folder stays. Sub-agent tasks it started go too.",
+        actions: [{ label: "Cancel", action: null }, { label: "Delete", primary: true, danger: true, action: { forget: { kind, id, home, title } } }],
+      },
+    },
+  };
+}
 
 // Idle: a ring; working: the spinner; blocked and done: a dot in their color; not open: room only.
 function dot(t, status) {
@@ -211,7 +233,8 @@ export default class ClaudeSessions extends View {
   shareOpen(term) {
     if (!this.sessions) return;
     const hiddenIds = new Set(shared(HIDDEN) ?? []);
-    const kept = this.sessions.filter((s) => !hiddenIds.has(s.cli));
+    const gone = deletedKeys();
+    const kept = this.sessions.filter((s) => !hiddenIds.has(s.cli) && !gone.has(`claude:${s.cli}`));
     const next = { terminals: [...new Set(kept.map((s) => term(s)?.address).filter(Boolean))].sort(), listed: kept.length };
     if (JSON.stringify(shared(OPEN)) !== JSON.stringify(next)) setShared(OPEN, next);
   }
@@ -295,7 +318,8 @@ export default class ClaudeSessions extends View {
       label: "List",
       items: [hidden
         ? { label: "Show again", note: "Back from Hidden to its place", action: { hide: { key: HIDDEN, id: s.cli, hidden: false } } }
-        : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.cli, hidden: true } } }],
+        : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.cli, hidden: true } } },
+        deleteItem("claude", s.cli, s.title, null, terminalFor(s, terminals()) ? "in a Herdr tab" : s.desktop ? "in the desktop app" : null)],
     });
     if (sortedSpaces().length) groups.push(spaceGroup(`claude:${s.cli}`));
     const rows = groups.reduce((n, g) => n + g.items.length, 0);
@@ -324,10 +348,12 @@ export default class ClaudeSessions extends View {
     // The all-space has what any space lists: sorted into one, or open in a Herdr tab.
     const inHere = once((s) => (every ? Boolean(sorted(s) || term(s)) : !here || sorted(s) === here.name || term(s)?.labels?.["herdr.space"] === here.id));
     const loose = (s) => Boolean(here || every) && !inHere(s) && !sorted(s);
-    const listed = (this.sessions ?? []).filter((s) => !hiddenIds.has(s.cli) && inHere(s));
+    const gone = deletedKeys();
+    const sessions = (this.sessions ?? []).filter((s) => !gone.has(`claude:${s.cli}`));
+    const listed = sessions.filter((s) => !hiddenIds.has(s.cli) && inHere(s));
     const list = listed.filter(shows);
-    const unsorted = (this.sessions ?? []).filter((s) => !hiddenIds.has(s.cli) && loose(s) && shows(s));
-    const hidden = (this.sessions ?? []).filter((s) => hiddenIds.has(s.cli) && (every || inHere(s)) && shows(s));
+    const unsorted = sessions.filter((s) => !hiddenIds.has(s.cli) && loose(s) && shows(s));
+    const hidden = sessions.filter((s) => hiddenIds.has(s.cli) && (every || inHere(s)) && shows(s));
 
     const row = (s) => {
       const k = term(s);
@@ -338,7 +364,7 @@ export default class ClaudeSessions extends View {
         : s.origin === "derived" ? `Forked in a Herdr tab${s.parent ? ` from «${s.parent}»` : ""} · ${s.account ?? ""}`
         : `${s.turns ?? 0} turns · ${s.model ?? ""} · ${s.effort ?? ""}`,
         s.link ? `⇄ Paired with Codex task «${s.link.title}»: each handover adds to both` : null,
-        s.desktop ? "Open in the desktop app" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Codex"]
+        s.desktop ? "Open in the desktop app" : null, a ? "Open in a Herdr tab" : null, "Right-click: open with another account or in Codex, hide or delete"]
         .filter(Boolean)
         .join("\n");
       const right = (el) => el.on_mouse_down("right", (_e, cx) => {

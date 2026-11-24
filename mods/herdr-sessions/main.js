@@ -3,7 +3,9 @@
 // processes every 30 seconds and remembers them, so a session stays listed after its tab is
 // closed. Sessions the desktop apps made (and copies of them), and sessions made in another
 // terminal, go to the Claude and Codex panels. A click goes to the session's tab, or resumes it in
-// a new tab with the account that made it; a right click offers the other accounts and a copy.
+// a new tab with the account that made it; a right click offers the other accounts, a copy,
+// hiding and deleting. A session in a pane added to a tab is folded into the tab's main session:
+// opening that brings the panes back beside it (see openWithPanes).
 // This panel also runs spaces.py every minute and shares its answer with the other panels.
 
 import { View, div, svg, image } from "gpui-kit";
@@ -58,6 +60,39 @@ function openTab(tab, key) {
   if (name && sortedSpaces().some((s) => s.name === name)) return run("space.new", { name, folder: tab.folder, tab: tab.name, argv: tab.argv });
   return run("tab.new", tab);
 }
+// Opens a tab (`open`), then `extra` panes beside its first one: the first on the right, the rest
+// under that one, each in its own folder; then focuses pane `focusAt` (0: the first). Herdr runs a
+// command when the mod yields, so each step waits for the pane it made (up to 5 s).
+async function openWithPanes(cx, open, extra, focusAt = 0) {
+  try {
+    const known = new Set(panes().map((p) => p.pane));
+    const made = async () => {
+      for (let i = 0; i < 100; i++) {
+        const p = panes().find((x) => !known.has(x.pane) && x.terminal);
+        if (p) {
+          known.add(p.pane);
+          return p;
+        }
+        await cx.sleep(50);
+      }
+      return null;
+    };
+    open();
+    const opened = [await made()];
+    if (!opened[0]) return;
+    for (const [i, x] of extra.entries()) {
+      run("pane.focus", { pane: opened.at(-1).pane });
+      run("terminal.open", { argv: x.argv, folder: x.folder, place: i === 0 ? "right" : "down" });
+      const p = await made();
+      if (!p) break;
+      opened.push(p);
+    }
+    run("pane.focus", { pane: (opened[focusAt] ?? opened[0]).pane });
+  } catch (e) {
+    notify({ title: "Couldn't open its panes", body: String(e?.message ?? e), level: "warning" });
+  }
+}
+
 function spaceGroup(key) {
   const mine = (shared(ASSIGN) ?? {})[key];
   const auto = shared(SPACES)?.map?.[key] ?? null;
@@ -125,6 +160,28 @@ const ICON = { claude: "icons/claude.svg", codex: "icons/codex.svg" };
 // For the tab strip over the session panels (pixel-session-tabs): the terminals of this list's
 // sessions open in a Herdr tab, and how many sessions it lists (hidden ones left out).
 const OPEN = "sessions.open.herdr";
+// Sessions deleted from a right-click menu ("claude:<id>" | "codex:<id>"), left out until the list
+// catches up. The same few lines are in the Claude and Codex panels.
+const DELETED = "sessions.deleted";
+const deletedKeys = () => new Set(shared(DELETED) ?? []);
+// "Delete…": asks first; session-menu's forget.py removes it (Claude: to the Recycle Bin; Codex:
+// its own delete, for good). Not while it's open somewhere.
+function deleteItem(kind, id, title, home, openWhere) {
+  if (openWhere) return { label: "Delete…", note: `Open ${openWhere}: close it first`, action: null };
+  const claude = kind === "claude";
+  return {
+    label: "Delete…",
+    note: claude ? "Its conversation goes to the Recycle Bin" : "Codex deletes it for good",
+    action: {
+      confirm: {
+        heading: claude ? "Delete this Claude session?" : "Delete this Codex task?",
+        body: `‘${title || "(untitled)"}’ leaves every list, and ${claude ? "its conversation goes to the Recycle Bin" : "Codex deletes its history for good"}.`,
+        hint: claude ? "Its working folder stays. The Claude desktop app may list it until it restarts." : "Its working folder stays. Sub-agent tasks it started go too.",
+        actions: [{ label: "Cancel", action: null }, { label: "Delete", primary: true, danger: true, action: { forget: { kind, id, home, title } } }],
+      },
+    },
+  };
+}
 
 // Any Claude account resumes a transcript by its path and writes on there. The main account is
 // the Claude desktop app's login, so it resumes with Remote Control and shows in the app's list
@@ -185,8 +242,9 @@ export default class HerdrSessions extends View {
         // A pick waits for the list (the tab strip hands it on again).
         if (!String(command).endsWith("request") || !req || !this.sessions) continue;
         setShared(REQUEST, null);
+        // A pick from the search, or a right-click menu item ({account, alone}).
         const s = (this.sessions ?? []).find((x) => x.key === req.id);
-        if (s) req.what === "menu" ? this.menu(s) : this.open(s);
+        if (s) req.what === "menu" ? this.menu(s) : this.open(s, cx, req);
         cx.notify();
       }
     });
@@ -237,7 +295,8 @@ export default class HerdrSessions extends View {
   shareOpen(term) {
     if (!this.sessions) return;
     const hiddenKeys = new Set(shared(HIDDEN) ?? []);
-    const kept = this.sessions.filter((s) => !hiddenKeys.has(s.key));
+    const gone = deletedKeys();
+    const kept = this.sessions.filter((s) => !hiddenKeys.has(s.key) && !gone.has(s.key));
     const next = { terminals: [...new Set(kept.map((s) => term(s)?.address).filter(Boolean))].sort(), listed: kept.length };
     if (JSON.stringify(shared(OPEN)) !== JSON.stringify(next)) setShared(OPEN, next);
   }
@@ -270,8 +329,9 @@ export default class HerdrSessions extends View {
     return (this.accounts[s.kind] ?? []).find((a) => a.name === s.account) ?? { name: s.account, cmd: s.account, main: false };
   }
 
-  // What opening the session with an account does: go to its tab, or resume it in a new one.
-  action(s, account, fork = false) {
+  // What opening the session with an account does: go to its tab, or resume it in a new one with
+  // the panes that were open beside it (`panes`; none for a copy or `alone`).
+  action(s, account, fork = false, alone = false) {
     if (!fork && this.liveTerminal(s, terminals())) {
       const p = panes().find((p) => p.terminal === s.terminal);
       return p ? { focus: p.pane } : { focusTerminal: s.terminal };
@@ -281,32 +341,103 @@ export default class HerdrSessions extends View {
     const title = s.title || "(untitled)";
     const name = fork ? `${title} (copy)` : account.name === s.account ? title : `${title} · ${account.name}`;
     const argv = s.kind === "claude" ? claudeArgv(s, account, fork) : codexArgv(s, account, fork ? "fork" : "resume");
-    return { tab: { name, folder: s.cwd, argv }, key: s.key };
+    const extra = fork || alone ? [] : this.panesOf(s).map((x) => ({ key: x.key, ...this.action(x, this.owner(x), false, true).tab })).filter((x) => x.argv);
+    return { tab: { name, folder: s.cwd, argv }, key: s.key, ...(extra.length ? { panes: extra } : {}) };
   }
 
-  perform(action) {
+  // The panes that come back with main session `s` (list.py's with_panes): not deleted, hidden or
+  // open somewhere now.
+  panesOf(s, all = terminals()) {
+    const skip = new Set([...deletedKeys(), ...(shared(HIDDEN) ?? [])]);
+    const byKey = new Map((this.sessions ?? []).map((x) => [x.key, x]));
+    return (s.with_panes ?? []).map((k) => byKey.get(k)).filter((x) => x && !skip.has(x.key) && !this.liveTerminal(x, all));
+  }
+
+  // The main session a pane session was added beside, when this list has it.
+  mainOf(s) {
+    if (!s.pane || !s.beside || s.beside === s.key || deletedKeys().has(s.beside)) return null;
+    const m = (this.sessions ?? []).find((x) => x.key === s.beside);
+    return m && !m.pane ? m : null;
+  }
+
+  // A tab with panes opens step by step, so it needs `cx` (any context that can sleep).
+  perform(action, cx, focusAt = 0) {
     if (action.problem) return notify({ title: "Can't open this session", body: action.problem, level: "warning" });
     if (action.focus) return run("pane.focus", { pane: action.focus });
     if (action.focusTerminal) return run("pane.focus", { terminal: action.focusTerminal });
+    if (action.tab && action.panes?.length && cx) return openWithPanes(cx, () => openTab(action.tab, action.key), action.panes, focusAt);
     if (action.tab) return openTab(action.tab, action.key);
   }
 
-  open(s) {
-    this.perform(this.action(s, this.owner(s)));
+  // `account`: another account's name (the menu); `alone`: without its panes. A pane session
+  // comes back with its main session, or beside it when that is open.
+  open(s, cx, { account, alone } = {}) {
+    const main = alone ? null : this.mainOf(s);
+    if (main && !this.liveTerminal(s, terminals())) {
+      const mainOpen = this.liveTerminal(main, terminals());
+      if (mainOpen) {
+        const mine = this.action(s, this.owner(s), false, true);
+        const mp = panes().find((p) => p.terminal === main.terminal);
+        if (!mine.tab || !mp || !cx) return this.perform(mine, cx);
+        return openWithPanes(cx, () => {
+          run("pane.focus", { pane: mp.pane });
+          run("terminal.open", { argv: mine.tab.argv, folder: mine.tab.folder, place: "right" });
+        }, []);
+      }
+      const whole = this.action(main, this.owner(main));
+      if (!whole.tab) return this.perform(whole, cx);
+      const extra = [...(whole.panes ?? [])];
+      if (!extra.some((x) => x.key === s.key)) {
+        const mine = this.action(s, this.owner(s), false, true).tab;
+        if (mine) extra.push({ key: s.key, ...mine });
+      }
+      return this.perform({ ...whole, panes: extra }, cx, extra.findIndex((x) => x.key === s.key) + 1);
+    }
+    const chosen = account ? (this.accounts[s.kind] ?? []).find((a) => a.name === account) : null;
+    return this.perform(this.action(s, chosen ?? this.owner(s), false, alone), cx);
   }
 
   menu(s) {
     const usable = (action) => (action.problem || action.focusTerminal ? null : action);
+    // Opening with panes takes steps the menu can't wait for, so it hands those back here.
+    const back = (req) => ({ request: { panel: "herdr", id: s.key, ...req } });
     const mails = new Map((shared(`sessions.${s.kind}`)?.accounts ?? []).map((a) => [a.name, a.email || ""]));
     const kind = s.kind === "claude" ? "Claude" : "Codex";
     const groups = [{
       label: `Continue with a ${kind} account`,
-      items: (this.accounts[s.kind] ?? []).map((a) => ({
-        label: a.name,
-        note: [a.name === s.account ? "made it" : null, mails.get(a.name)].filter(Boolean).join(" · "),
-        action: usable(this.action(s, a)),
-      })),
+      items: (this.accounts[s.kind] ?? []).map((a) => {
+        const action = usable(this.action(s, a));
+        return {
+          label: a.name,
+          note: [a.name === s.account ? "made it" : null, mails.get(a.name)].filter(Boolean).join(" · "),
+          action: action?.panes ? back({ account: a.name }) : action,
+        };
+      }),
     }];
+    // A main session's panes: it opens with the ones still open beside it at the end; any of them
+    // (or an earlier one) can open alone. A pane session can come back with its main one.
+    const gone = deletedKeys();
+    const withIt = new Set(this.panesOf(s).map((x) => x.key));
+    const kids = (this.sessions ?? []).filter((x) => x.pane && x.beside === s.key && x.key !== s.key && !gone.has(x.key) && this.mainOf(x) === s);
+    const main = this.mainOf(s);
+    if (kids.length && !this.liveTerminal(s, terminals())) {
+      groups.push({
+        label: "Panes",
+        items: [
+          ...(withIt.size ? [{ label: "Open without its panes", note: `Leaves the ${withIt.size === 1 ? "pane" : `${withIt.size} panes`} out`, action: back({ alone: true }) }] : []),
+          ...kids.slice(0, 5).map((x) => ({
+            label: x.title || "(untitled)",
+            note: this.liveTerminal(x, terminals()) ? "Open: go to it" : withIt.has(x.key) ? "Comes back with it · alone here" : "Closed earlier · opens alone",
+            action: back({ id: x.key, alone: true }),
+          })),
+        ],
+      });
+    } else if (main && !this.liveTerminal(s, terminals())) {
+      groups.push({
+        label: "Pane",
+        items: [{ label: "Open with its main session", note: main.title || "(untitled)", action: back({}) }],
+      });
+    }
     groups.push({
       label: "Copy",
       items: [{ label: "Open a copy", note: "A new session from this one; the original stays as it is", action: usable(this.action(s, this.owner(s), true)) }],
@@ -316,7 +447,8 @@ export default class HerdrSessions extends View {
       label: "List",
       items: [hidden
         ? { label: "Show again", note: "Back from Hidden to its place", action: { hide: { key: HIDDEN, id: s.key, hidden: false } } }
-        : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.key, hidden: true } } }],
+        : { label: "Hide from panel", note: "Collects it under 'Hidden' at the bottom", action: { hide: { key: HIDDEN, id: s.key, hidden: true } } },
+        deleteItem(s.kind, s.id, s.title, s.home, this.liveTerminal(s, terminals()) ? `in a Herdr tab (${s.where || s.terminal})` : null)],
     });
     if (sortedSpaces().length) groups.push(spaceGroup(s.key));
     const rows = groups.reduce((n, g) => n + g.items.length, 0);
@@ -337,25 +469,69 @@ export default class HerdrSessions extends View {
     const here = this.scope === "all" || every ? null : shownSorted;
     const term = once((s) => this.liveTerminal(s, all));
     this.shareOpen(term);
-    const spaceIn = spaceLookup();
+    const gone = deletedKeys();
+    const sessions = (this.sessions ?? []).filter((s) => !gone.has(s.key));
+    // A pane session goes with its main session: in its space, and folded into its row.
+    const allByKey = new Map(sessions.map((s) => [s.key, s]));
+    const mainHere = once((s) => {
+      const m = s.pane && s.beside && s.beside !== s.key ? allByKey.get(s.beside) : null;
+      return m && !m.pane ? m : null;
+    });
+    const lookup = spaceLookup();
+    const spaceIn = (key) => {
+      const s = allByKey.get(key);
+      return lookup((s && mainHere(s)?.key) ?? key);
+    };
     // The all-space has what any space lists: sorted into one, or open in a Herdr tab.
     const inHere = once((s) => (every ? Boolean(spaceIn(s.key) || term(s)) : !here || spaceIn(s.key) === here.name || term(s)?.labels?.["herdr.space"] === here.id));
     const loose = (s) => Boolean(here || every) && !inHere(s) && !spaceIn(s.key);
-    const listed = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key) && inHere(s));
+    const listed = sessions.filter((s) => !hiddenKeys.has(s.key) && inHere(s));
     const list = listed.filter(filter.keep);
-    const unsorted = (this.sessions ?? []).filter((s) => !hiddenKeys.has(s.key) && loose(s) && filter.keep(s));
-    const hidden = (this.sessions ?? []).filter((s) => hiddenKeys.has(s.key) && (every || inHere(s)) && filter.keep(s));
+    const unsorted = sessions.filter((s) => !hiddenKeys.has(s.key) && loose(s) && filter.keep(s));
+    const hidden = sessions.filter((s) => hiddenKeys.has(s.key) && (every || inHere(s)) && filter.keep(s));
+
+    // A session in a pane added to a tab (a split beside the session the tab was opened with) is
+    // folded into that main session when both are listed: the main row counts the panes that come
+    // back with it, and its right-click menu lists them all. A pane still open while its main
+    // session isn't stays in sight, indented under it; one whose main session isn't listed keeps
+    // its place. Those rows have the split mark.
+    // `rows` (a list) folds the panes whose main session it has.
+    const foldsIn = (rows) => {
+      const keys = new Set(rows.map((s) => s.key));
+      return (s) => {
+        const m = mainHere(s);
+        return Boolean(m && keys.has(m.key)) && !(term(s) && !term(m));
+      };
+    };
+    const byKey = new Map(list.map((s) => [s.key, s]));
+    const under = (s) => {
+      const m = mainHere(s);
+      return m && byKey.has(m.key) ? m : null;
+    };
+    const folded = foldsIn(list);
+    const kids = new Map();
+    for (const s of list) {
+      const p = under(s);
+      if (p && !folded(s)) kids.set(p.key, [...(kids.get(p.key) ?? []), s]);
+    }
+    const ordered = list.flatMap((s) => (under(s) ? [] : [s, ...(kids.get(s.key) ?? [])]));
+    // The panes a main row brings back (only worked out for rows that have some).
+    const coming = once((s) => (s.with_panes?.length && !term(s) ? this.panesOf(s, all) : []));
 
     const row = (s) => {
       const k = term(s);
       const a = k && live.get(k.address);
       const off = !k && (!s.folder || (s.kind === "claude" && !s.path));
+      const nested = Boolean(under(s));
+      const extra = coming(s);
       const tip = [
         s.cwd,
         every ? `Space: ${spaceIn(s.key) ?? "not sorted"}` : null,
         `${s.kind === "claude" ? "Claude" : "Codex"} · ${s.account}${s.opened_with && s.opened_with !== s.account ? ` (last opened with ${s.opened_with})` : ""}`,
+        s.pane ? (s.beside_title ? `Added pane, beside «${s.beside_title}»` : "Added pane (not the session its tab was opened with)") : null,
+        extra.length ? `Opens with the ${extra.length === 1 ? "pane" : `${extra.length} panes`} open beside it last time:\n${extra.map((x) => `  ◫ ${x.title || "(untitled)"}`).join("\n")}` : null,
         k ? `Open in a Herdr tab: ${s.where || k.address}` : s.where ? `Was in: ${s.where}` : null,
-        "Right-click: another account, a copy, or hide",
+        extra.length ? "Right-click: open without them, another account, a copy, hide or delete" : "Right-click: another account, a copy, hide or delete",
       ].filter(Boolean).join("\n");
       const right = (el) => el.on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
@@ -370,12 +546,13 @@ export default class HerdrSessions extends View {
           .justify_center()
           .hover((el) => el.bg(t.hover))
           .tooltip(`${s.title}\n${tip}`)
-          .on_click(() => this.open(s))
+          .on_click((_e, cx) => cx.spawn((cx) => this.open(s, cx)))
           .child(a ? dot(t, a.status) : image(ICON[s.kind]).w(12).h(12).flex_none()));
       }
       return right(h_flex()
         .id(`hs-${s.key}`)
         .px(8)
+        .when(nested, (el) => el.pl(22))
         .h(30)
         .flex_none()
         .rounded(8)
@@ -385,10 +562,15 @@ export default class HerdrSessions extends View {
         .cursor_pointer()
         .hover((el) => el.bg(t.hover))
         .tooltip(tip)
-        .on_click(() => this.open(s))
+        .on_click((_e, cx) => cx.spawn((cx) => this.open(s, cx)))
         .child(dot(t, a?.status))
+        .when(Boolean(s.pane), (el) => el.child(svg("mods/pane/split-right.svg").size(12).flex_none().text_color(t.accent)))
         .child(image(ICON[s.kind]).w(12).h(12).flex_none())
         .child(div().flex_1().min_w(0).truncate().text_color(off ? t.dim : t.foreground).child(s.title || "(untitled)"))
+        // How many panes come back with it.
+        .when(extra.length > 0, (el) => el.child(h_flex().flex_none().gap(2).items_center().text_size(10.5).font_medium().text_color(t.accent)
+          .child(svg("mods/pane/split-right.svg").size(11).flex_none())
+          .child(div().child(`+${extra.length}`))))
         // In the all-space the chip names the session's space (the account stays in the tooltip).
         .when(!every, (el) => el.child(div().flex_none().px(5).h(16).rounded(4).bg(t.raised).text_size(10).text_color(t.dim).flex().items_center().child(s.account)))
         .when(Boolean(every && spaceIn(s.key)), (el) => el.child(div().flex_none().max_w(52).truncate().text_size(10).text_color(t.muted).child(spaceIn(s.key))))
@@ -397,8 +579,8 @@ export default class HerdrSessions extends View {
 
     // Date groups in list order; a header folds its group and, folded, says how many.
     const groups = [];
-    for (const s of list) {
-      const label = group(s.last ?? 0, now);
+    for (const s of ordered) {
+      const label = group((under(s) ?? s).last ?? 0, now);
       if (groups.at(-1)?.label === label) groups.at(-1).members.push(s);
       else groups.push({ label, members: [s] });
     }
@@ -432,11 +614,16 @@ export default class HerdrSessions extends View {
         .child(div().flex_1())
         .when(!open, (el) => el.child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none()));
     };
-    const rows = rail ? list.map(row) : groups.flatMap((g, i) => [header(g, i), ...(isFolded(g.label) ? [] : g.members.map(row))]);
+    const rows = rail ? ordered.map(row) : groups.flatMap((g, i) => [header(g, i), ...(isFolded(g.label) ? [] : g.members.map(row))]);
 
     // A slim row of the filters, each with how many sessions it has (left out when too narrow).
     const filterBar = () => {
-      const counts = KINDS.map((f) => listed.filter(f.keep).length);
+      // the rows each filter shows (panes folded into their main sessions left out)
+      const counts = KINDS.map((f) => {
+        const rows = listed.filter(f.keep);
+        const inside = foldsIn(rows);
+        return rows.filter((s) => !inside(s)).length;
+      });
       const need = 27 + KINDS.reduce((n, f, i) => n + 15 + 6.5 * f.label.length + 6 * String(counts[i]).length, 0);
       const numbers = this.width == null || this.width >= need;
       return h_flex()
